@@ -2,6 +2,7 @@ import calendar
 import json
 import random
 import re
+from dataclasses import dataclass
 import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -22,6 +23,98 @@ from bet.utils import MatchAnalyzer, generate_bankroll_alerts
 from get_events import SofaScore
 from jogos.models import League, LiveSnapshot, Match, MatchStats, RunningToday, Season
 from jogos.utils import analyze_match, save_sofascore_data
+
+
+@dataclass
+class MatchStatFilters:
+    """Encapsula filtros numéricos aplicados a estatísticas de partidas."""
+
+    xg_min: float | None = None
+    xg_max: float | None = None
+    possession_min: float | None = None
+    possession_max: float | None = None
+    shots_min: int | None = None
+    shots_max: int | None = None
+
+    @classmethod
+    def from_request(cls, request):
+        def parse_float(value):
+            try:
+                return float(value) if value not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
+        def parse_int(value):
+            try:
+                return int(value) if value not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
+        return cls(
+            xg_min=parse_float(request.GET.get("xg_min")),
+            xg_max=parse_float(request.GET.get("xg_max")),
+            possession_min=parse_float(request.GET.get("possession_min")),
+            possession_max=parse_float(request.GET.get("possession_max")),
+            shots_min=parse_int(request.GET.get("shots_min")),
+            shots_max=parse_int(request.GET.get("shots_max")),
+        )
+
+    def is_empty(self):
+        return not any([
+            self.xg_min,
+            self.xg_max,
+            self.possession_min,
+            self.possession_max,
+            self.shots_min,
+            self.shots_max,
+        ])
+
+    def match_stats(self, stats):
+        """Retorna True se o objeto de estatísticas cumpre os filtros definidos."""
+
+        def total(field_home, field_away):
+            return (getattr(stats, field_home, 0) or 0) + (getattr(stats, field_away, 0) or 0)
+
+        def average(field_home, field_away):
+            return ((getattr(stats, field_home, 0) or 0) + (getattr(stats, field_away, 0) or 0)) / 2
+
+        total_xg = total("xg_home", "xg_away")
+        if self.xg_min is not None and total_xg < self.xg_min:
+            return False
+        if self.xg_max is not None and total_xg > self.xg_max:
+            return False
+
+        avg_possession = average("possession_home", "possession_away")
+        if self.possession_min is not None and avg_possession < self.possession_min:
+            return False
+        if self.possession_max is not None and avg_possession > self.possession_max:
+            return False
+
+        total_shots = total("shots_home", "shots_away")
+        if self.shots_min is not None and total_shots < self.shots_min:
+            return False
+        if self.shots_max is not None and total_shots > self.shots_max:
+            return False
+
+        return True
+
+
+def filter_matches_by_stats(matches, stat_filters):
+    """Aplica filtros numéricos de forma segura retornando apenas partidas válidas."""
+
+    if stat_filters.is_empty():
+        return list(matches)
+
+    filtered = []
+    for match in matches:
+        stats = getattr(match, "stats", None)
+        if not stats:
+            continue
+
+        if stat_filters.match_stats(stats):
+            filtered.append(match)
+
+    return filtered
 
 
 
@@ -86,13 +179,7 @@ def matches_list(request):
     is_live = request.GET.get("live")  # "1" se ativo
     page_number = request.GET.get("page", 1)
 
-    # Advanced Filters
-    xg_min = request.GET.get("xg_min")
-    xg_max = request.GET.get("xg_max")
-    possession_min = request.GET.get("possession_min")
-    possession_max = request.GET.get("possession_max")
-    shots_min = request.GET.get("shots_min")
-    shots_max = request.GET.get("shots_max")
+    stat_filters = MatchStatFilters.from_request(request)
 
     # --- BASE QUERYSET ---
     today = timezone.localdate()
@@ -125,39 +212,7 @@ def matches_list(request):
         matches = matches.filter(finalizado=False)
 
         # --- STATS FILTERING (IN MEMORY) ---
-    # Verifica se algum filtro numérico foi ativado
-    has_stats_filter = any([xg_min, xg_max, possession_min, possession_max, shots_min, shots_max])
-
-    final_matches = []
-
-    # Se não tem filtros de stats, não precisamos iterar para filtrar
-    if not has_stats_filter:
-        final_matches = matches
-    else:
-        # Se tem filtros, iteramos sobre o queryset (atenção com performance se forem muitos jogos)
-        for m in matches:
-            # Tenta pegar o objeto stats (se for relação OneToOne use m.stats, se for reverse FK use m.stats.first())
-            # Assumindo OneToOneField ou similar acessível via m.stats
-            s = getattr(m, "stats", None)
-
-            if not s: continue  # Jogo sem stats não passa no filtro numérico
-
-            # xG Check
-            total_xg = (s.xg_home or 0) + (s.xg_away or 0)
-            if xg_min and total_xg < float(xg_min): continue
-            if xg_max and total_xg > float(xg_max): continue
-
-            # Possession Check (Média)
-            avg_poss = ((s.possession_home or 0) + (s.possession_away or 0)) / 2
-            if possession_min and avg_poss < float(possession_min): continue
-            if possession_max and avg_poss > float(possession_max): continue
-
-            # Shots Check
-            total_shots = (s.shots_home or 0) + (s.shots_away or 0)
-            if shots_min and total_shots < int(shots_min): continue
-            if shots_max and total_shots > int(shots_max): continue
-
-            final_matches.append(m)
+    final_matches = filter_matches_by_stats(matches, stat_filters)
 
     # --- PAGINATION ---
     paginator = Paginator(final_matches, 12)  # 12 por página (grid 3x4 ou 4x3)
@@ -186,9 +241,9 @@ def matches_list(request):
         "query": query,
         "season_id": season_id,
         "live": is_live,
-        "xg_min": xg_min, "xg_max": xg_max,
-        "possession_min": possession_min, "possession_max": possession_max,
-        "shots_min": shots_min, "shots_max": shots_max,
+        "xg_min": stat_filters.xg_min, "xg_max": stat_filters.xg_max,
+        "possession_min": stat_filters.possession_min, "possession_max": stat_filters.possession_max,
+        "shots_min": stat_filters.shots_min, "shots_max": stat_filters.shots_max,
     }
 
     return render(request, "betting/matches.html", context)
