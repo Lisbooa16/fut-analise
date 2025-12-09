@@ -1,28 +1,27 @@
+import calendar
 import json
+import random
 import re
-from datetime import datetime, date
-
-from django.core.paginator import Paginator
-from django.db.models.functions import Cast
-from django.forms import model_to_dict
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib import messages
-from django.db.models import Sum, Q, TextField, Count
+import time
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
+from curl_cffi import requests as cureq
+from django.contrib import messages
+from django.core.paginator import Paginator
+from django.db.models import Count, Q, Sum
+from django.forms import model_to_dict
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.timezone import now
 
+from bet.models import Bankroll, BankrollHistory, Bet, PossibleBet, Status
 from bet.templatetags.currency_filters import hide_analysis_errors
-from bet.utils import generate_bankroll_alerts, MatchAnalyzer
+from bet.utils import MatchAnalyzer, generate_bankroll_alerts
 from get_events import SofaScore
-from jogos.models import Match, MatchStats, LiveSnapshot, Season, League, RunningToday
-from bet.models import Bet, Bankroll, BankrollHistory, Status, PossibleBet
-from jogos.utils import analyze_match
-from django.shortcuts import render
-from django.db.models import Sum, Count, Q
-from django.utils import timezone
-from datetime import timedelta, date
+from jogos.models import League, LiveSnapshot, Match, MatchStats, RunningToday, Season
+from jogos.utils import analyze_match, save_sofascore_data
 
 
 
@@ -198,7 +197,6 @@ def extract_balanced_json(text, title):
     """
     Encontra o bloco JSON após um título e retorna o JSON completo,
     usando contador de chaves para evitar truncamento.
-    usando contador de chaves para evitar truncamento.
     """
     # Encontra o título
     m = re.search(re.escape(title), text)
@@ -363,8 +361,6 @@ def match_detail(request, pk):
         "possible_bets": possible_bets,
         "stat_labels": stat_labels,
     })
-
-from decimal import Decimal
 
 def get_recommended_stake_and_odd(bankroll, probability=None):
     """
@@ -756,18 +752,6 @@ def update_bet_result(request, bet_id):
         messages.error(request, "Resultado inválido.")
 
     return redirect("bankroll_view")
-
-
-import calendar
-import json
-import time
-import random
-
-from django.http import JsonResponse
-from curl_cffi import requests as cureq
-
-from bet.models import PossibleBet
-from jogos.utils import save_sofascore_data
 
 
 BASE = "https://www.sofascore.com/api/v1"
