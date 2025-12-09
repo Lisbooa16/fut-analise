@@ -92,9 +92,9 @@ class Bet(models.Model):
     match = models.ForeignKey(
         Match, on_delete=models.CASCADE, related_name='bets'
     )
-    market = models.CharField(max_length=255)  # Ex: "+1.5 gols", "Vitória do Palmeiras"
+    market = models.CharField(max_length=255)                                           
     odd = models.DecimalField(max_digits=6, decimal_places=2)
-    stake = models.DecimalField(max_digits=10, decimal_places=2)  # valor apostado
+    stake = models.DecimalField(max_digits=10, decimal_places=2)                  
     potential_profit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     result = models.CharField(
         max_length=20,

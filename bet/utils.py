@@ -7,14 +7,14 @@ from django.db import models
 def generate_bankroll_alerts(bankroll):
     alerts = []
 
-    # 1) Histórico das últimas apostas
+                                      
     last_bets = Bet.objects.filter(bankroll=bankroll).order_by("-created_at")[:20]
 
-    # Se não houver apostas ainda
+                                 
     if not last_bets:
         return ["📘 Ainda não há histórico suficiente para análise da banca."]
 
-    # 2) Sequência de reds
+                          
     reds = 0
     for bet in last_bets:
         if bet.result == "RED":
@@ -26,7 +26,7 @@ def generate_bankroll_alerts(bankroll):
         alerts.append(f"⚠️ Atenção! Você está em sequência de {reds} reds seguidos. "
                       "Reduza a stake para proteger a banca.")
 
-    # 3) Lucro total da banca
+                             
     profit = bankroll.balance - bankroll.initial_balance
 
     if profit < 0:
@@ -35,7 +35,7 @@ def generate_bankroll_alerts(bankroll):
             "Mantenha disciplina e reduza a exposição."
         )
 
-        # Quantos greens seriam necessários para recuperar?
+                                                           
         avg_green = Bet.objects.filter(bankroll=bankroll, result="GREEN").aggregate(
             avg=models.Avg("potential_profit")
         )["avg"]
@@ -52,7 +52,7 @@ def generate_bankroll_alerts(bankroll):
             "Continue seguindo sua gestão atual."
         )
 
-    # 4) Stake média — alerta de agressividade
+                                              
     stakes = [b.stake for b in last_bets if b.stake > 0]
     if stakes:
         avg_stake = sum(stakes) / len(stakes)
@@ -77,13 +77,13 @@ class SofaStatParser:
         self.data = stats_json.get('statistics', [])
 
     def get_stats(self, period="ALL"):
-        # Encontrar o grupo do período correto
+                                              
         period_group = next((item for item in self.data if item["period"] == period), None)
         if not period_group:
             return {}
 
         stats = {}
-        # Mapeamento: Chave do JSON -> Nome da nossa variável interna
+                                                                     
         key_map = {
             "expectedGoals": "xg",
             "ballPossession": "possession",
@@ -120,9 +120,9 @@ class MatchAnalyzer:
         self.home_name = match.home_team.name if match.home_team else "Mandante"
         self.away_name = match.away_team.name if match.away_team else "Visitante"
 
-    # =========================================================================
-    # 1. ANÁLISE DE STREAKS (HISTÓRICO/PRÉ-JOGO) - O método que faltava
-    # =========================================================================
+                                                                               
+                                                                       
+                                                                               
     def analyze_streaks(self, streaks_data):
         """
         Analisa tendências históricas e H2H com pesos diferentes.
@@ -130,7 +130,7 @@ class MatchAnalyzer:
         """
         analyzed = {"general": [], "head2head": [], "impact": {"goals_over": 0, "btts": 0, "momentum": 0}}
 
-        # Pesos: H2H vale mais
+                              
         impact_weights = {"general": 1.0, "head2head": 1.5}
 
         def parse_ratio(v):
@@ -150,7 +150,7 @@ class MatchAnalyzer:
                 name = item.get("name", "").lower()
                 team = item.get("team", "")
 
-                # Lógica de impacto
+                                   
                 weight = impact_weights.get(group, 1.0)
                 if ratio >= 0.70:
                     if "over 2.5" in name or "goals" in name:
@@ -168,9 +168,9 @@ class MatchAnalyzer:
 
         return analyzed
 
-    # =========================================================================
-    # 2. CÁLCULO DE PRESSÃO (AUXILIAR)
-    # =========================================================================
+                                                                               
+                                      
+                                                                               
     def calculate_advanced_pressure(self, stats):
         """Calcula pressão 0-100 baseada em métricas avançadas."""
 
@@ -196,14 +196,14 @@ class MatchAnalyzer:
             stats.get('box_touches_away', 0), stats.get('possession_away', 0)
         )
 
-        # Normalização percentual para barra de progresso
+                                                         
         total = p_home + p_away
         if total == 0: return 50, 50
         return round((p_home / total) * 100), round((p_away / total) * 100)
 
-    # =========================================================================
-    # 3. ANÁLISE AO VIVO (JSON) - O método novo
-    # =========================================================================
+                                                                               
+                                               
+                                                                               
     def analyze_json_data(self, stats_json, event_json):
         """Analisa o jogo ao vivo usando os JSONs salvos no banco."""
         parser = SofaStatParser(stats_json)
@@ -212,33 +212,33 @@ class MatchAnalyzer:
         if not stats:
             return {"insights": [], "suggestions": [], "pressure_index": {"home": 50, "away": 50}}
 
-        # Tenta pegar placar
+                            
         try:
             home_score = event_json.get('homeScore', {}).get('current', 0)
             away_score = event_json.get('awayScore', {}).get('current', 0)
-            # Tentar achar minuto no status ou changes (fallback)
+                                                                 
             minute = 0
             if 'status' in event_json:
-                # Depende de como vem o JSON, às vezes vem description "85'"
+                                                                            
                 pass
         except:
             home_score = 0
             away_score = 0
 
-        # Pressão
+                 
         pressure_h, pressure_a = self.calculate_advanced_pressure(stats)
 
         insights = []
         suggestions = []
 
-        # -- Lógica de Insights --
+                                  
 
-        # 1. Domínio Territorial
+                                
         if stats.get('final_third_home', 0) > stats.get('final_third_away', 0) * 1.5:
             if stats.get('xg_home', 0) < 0.5:
                 insights.append(f"{self.home_name} tem domínio territorial, mas cria pouco perigo real.")
 
-        # 2. xG vs Gols (Azar)
+                              
         if (stats.get('xg_home', 0) - home_score) > 1.0:
             insights.append(f"🔥 {self.home_name} merece o gol! xG alto ({stats['xg_home']}) sem marcar.")
             suggestions.append("Gol Home")
@@ -247,7 +247,7 @@ class MatchAnalyzer:
             insights.append(f"🔥 {self.away_name} merece o gol! xG alto ({stats['xg_away']}) sem marcar.")
             suggestions.append("Gol Away")
 
-        # 3. Jogo Aberto
+                        
         total_final_third = stats.get('final_third_home', 0) + stats.get('final_third_away', 0)
         if total_final_third > 70:
             insights.append("Jogo aberto: Muitas chegadas no ataque de ambos os lados.")

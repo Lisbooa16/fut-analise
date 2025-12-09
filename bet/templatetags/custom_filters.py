@@ -14,10 +14,10 @@ def replace(value, arg):
 
     if isinstance(arg, str):
         try:
-            # Tenta dividir "antigo|novo"
+                                         
             old, new = arg.split("|")
         except ValueError:
-            # Se não houver pipe, apenas substitui o argumento completo por nada
+                                                                                
             return value.replace(arg, '')
 
         return value.replace(old, new)
