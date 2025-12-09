@@ -17,8 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.timezone import now
 
-from bet.models import Bankroll, BankrollHistory, Bet, PossibleBet, Status
-from bet.templatetags.currency_filters import hide_analysis_errors
+from bet.models import Bankroll, Bet, PossibleBet, Status
 from bet.utils import MatchAnalyzer, generate_bankroll_alerts
 from get_events import SofaScore
 from jogos.models import League, LiveSnapshot, Match, MatchStats, RunningToday, Season
@@ -143,8 +142,8 @@ def create_bet_from_model(request, pb_id):
     )
 
     # 3️⃣ Debitar automaticamente do bankroll
-    bankroll.withdraw(stake)
-    bankroll.save()
+    bankroll.withdraw(stake, note=f"Aposta gerada a partir do modelo: {pb.market}")
+    bankroll.save(update_fields=["balance"])
 
     messages.success(request, f"Aposta criada: {pb.market}")
     return redirect("match_detail", pk=match.id)
@@ -520,55 +519,64 @@ def place_bet(request, match_id):
     )
 
 
+def _parse_decimal(value: str | None) -> Decimal:
+    if value is None:
+        raise ValueError("Nenhum valor informado.")
+    return Decimal(value.replace(",", "."))
+
+
+def _bankroll_totals(bets):
+    return (
+        bets.filter(result="GREEN").aggregate(Sum("potential_profit"))["potential_profit__sum"]
+        or Decimal("0")
+    ), (bets.filter(result="RED").aggregate(Sum("stake"))["stake__sum"] or Decimal("0"))
+
+
 def bankroll_view(request):
     """Exibe a banca e permite adicionar saldo."""
+
     bankroll, _ = Bankroll.objects.get_or_create(
         name="Banca Principal", defaults={"balance": 0}
     )
 
-    # Depósito manual
     if request.method == "POST":
-        action = request.POST.get('action')  # "increese" (errado) ou "increase" (certo)
+        action = request.POST.get("action")
         amount = request.POST.get("amount")
 
         try:
-            value = Decimal(amount.replace(',', '.'))  # Garante que aceite vírgula ou ponto
+            value = _parse_decimal(amount)
 
             if value <= 0:
                 messages.error(request, "O valor deve ser maior que zero.")
-
-            # --- CORREÇÃO AQUI ---
-            elif action == 'increase' or action == 'increese':  # Aceita os dois jeitos por garantia
-                bankroll.deposit(value)
-                BankrollHistory.objects.create(bankroll=bankroll, status=Status.INCREASE.value, amount=value)
+            elif action in {"increase", "increese"}:  # preserva compatibilidade com typo anterior
+                bankroll.deposit(value, note="Depósito manual")
                 messages.success(request, f"💰 Adicionado R$ {value} à banca!")
                 return redirect("bankroll_view")
+            elif action == "remove":
+                bankroll.withdraw(value, note="Saque manual")
+                messages.success(request, f"💸 Removido R$ {value} da banca!")
+                return redirect("bankroll_view")
+            else:
+                messages.error(request, "Ação inválida.")
 
-            elif action == 'remove':  # Use ELIF para ser específico
-                if bankroll.balance < value:
-                    messages.error(request, "Saldo insuficiente para retirar este valor.")
-                else:
-                    bankroll.withdraw(value)
-                    BankrollHistory.objects.create(bankroll=bankroll, status=Status.DECREASE.value, amount=value)
-                    messages.success(request, f"💸 Removido R$ {value} da banca!")
-                    return redirect("bankroll_view")
+        except (InvalidOperation, ValueError) as exc:
+            messages.error(request, f"Valor inválido. {exc}")
+        except Exception as exc:  # pragma: no cover - fallback de segurança
+            messages.error(request, f"Erro ao processar: {exc}")
 
-        except (InvalidOperation, ValueError):
-            messages.error(request, "Valor inválido. Use apenas números.")
-        except Exception as e:
-            messages.error(request, f"Erro ao processar: {str(e)}")
-
-    # ... restante do código (bets, total_green, etc) ...
     bets = bankroll.bets.all().order_by("-created_at")
-    total_green = bets.filter(result="GREEN").aggregate(Sum("potential_profit"))["potential_profit__sum"] or 0
-    total_red = bets.filter(result="RED").aggregate(Sum("stake"))["stake__sum"] or 0
+    total_green, total_red = _bankroll_totals(bets)
 
-    return render(request, "betting/bankroll.html", {
-        "bankroll": bankroll,
-        "bets": bets,
-        "total_green": total_green,
-        "total_red": total_red,
-    })
+    return render(
+        request,
+        "betting/bankroll.html",
+        {
+            "bankroll": bankroll,
+            "bets": bets,
+            "total_green": total_green,
+            "total_red": total_red,
+        },
+    )
 
 
 def dashboard(request):
