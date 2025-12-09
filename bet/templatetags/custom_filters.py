@@ -9,6 +9,9 @@ def replace(value, arg):
     Substitui todas as ocorrências de uma substring (arg[0]) por outra (arg[1])
     A sintaxe esperada no template é: |replace:"antigo|novo"
     """
+    if not isinstance(value, str):
+        return value
+
     if isinstance(arg, str):
         try:
             # Tenta dividir "antigo|novo"
