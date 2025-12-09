@@ -1,0 +1,104 @@
+:root {
+  --bg-dark: #121214;
+  --bg-card: #1e1e24;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-muted: #a1a1aa;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: #fff;
+}
+
+/* --- Cards de Estatísticas --- */
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.icon-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ls-1 { letter-spacing: 1px; }
+
+/* Efeito de brilho no fundo do card */
+.stat-glow {
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  opacity: 0.08;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+/* --- Card de Ação (Formulário) --- */
+.action-card {
+  background: linear-gradient(145deg, #1e1e24 0%, #25252c 100%);
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px;
+}
+
+.form-control:focus {
+  background-color: #121214;
+  color: #fff;
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* --- Tabela --- */
+.table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.table-dark {
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--border-color);
+}
+
+.table tbody tr {
+  transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Dot para status pendente */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 193, 7, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+}
+
+@media (max-width: 768px) {
+  .stat-card { margin-bottom: 1rem; }
+  .table th, .table td { font-size: 0.85rem; padding: 0.75rem 0.5rem; }
+}

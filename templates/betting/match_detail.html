@@ -1,0 +1,599 @@
+{% extends 'base.html' %}
+{% block title %}{{ match.home_team }} vs {{ match.away_team }}{% endblock %}
+{% load currency_filters %}
+
+{% block content %}
+
+<style>
+/* --- TEMA DARK PREMIUM --- */
+:root {
+    --bg-main: #121214;
+    --bg-card: #1e1e24;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --primary: #3699ff;
+    --success: #00bfa5;
+    --danger: #f64e60;
+    --warning: #ffc107;
+    --text-main: #ffffff;
+    --text-muted: #7e8299;
+}
+
+/* Placar Principal */
+.scoreboard-card {
+    background: linear-gradient(180deg, #2b2b40 0%, #1e1e2d 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.score-val {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+}
+
+.team-name-lg {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Badge AO VIVO pulsante */
+.live-badge {
+    background: rgba(246, 78, 96, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(246, 78, 96, 0.3);
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    animation: border-pulse 2s infinite;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background-color: var(--danger);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--danger);
+}
+
+/* Termômetro de Pressão (Tug of War) */
+.pressure-wrapper {
+    background: #121214;
+    height: 12px;
+    border-radius: 6px;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    margin: 15px 0;
+}
+
+.pressure-bar {
+    height: 100%;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.p-home { background: linear-gradient(90deg, #3699ff 0%, #00d2ff 100%); }
+.p-away { background: linear-gradient(90deg, #ff4b2b 0%, #f64e60 100%); }
+
+/* Barras de Estatísticas */
+.stat-row { margin-bottom: 16px; }
+.stat-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+.stat-progress-bg {
+    background: rgba(255,255,255,0.05);
+    height: 6px;
+    border-radius: 3px;
+    display: flex;
+    overflow: hidden;
+}
+.stat-fill { height: 100%; transition: width 0.6s ease; }
+.fill-home { background-color: var(--primary); }
+.fill-away { background-color: var(--danger); }
+
+/* Insights Log */
+.insight-box {
+    background: rgba(0,0,0,0.2);
+    border-left: 3px solid var(--warning);
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #e0e0e0;
+}
+
+@keyframes border-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(246, 78, 96, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0); }
+}
+</style>
+
+<div class="container-fluid px-md-5 py-4">
+
+    <a href="{% url 'matches_list' %}" class="btn btn-outline-secondary btn-sm mb-4 border-0">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="scoreboard-card text-center shadow-lg">
+                <div class="mb-3">
+                    {% if match.finalizado %}
+                        <span class="badge bg-secondary text-white px-3 py-2">FINALIZADO</span>
+                    {% else %}
+                        <div class="live-badge">
+                            <span class="live-dot"></span> AO VIVO <span class="ms-1 text-white opacity-75 minute-badge">{{ live_analysis.analysis.minute|default:"-" }}'</span>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-center align-items-center gap-4 gap-md-5">
+                    <div class="text-end flex-fill">
+                        <h2 class="team-name-lg mb-0">{{ match.home_team }}</h2>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="score-val home-score">{{ match.home_team_score|default:"0" }}</span>
+                        <span class="text-muted fs-3 opacity-25">X</span>
+                        <span class="score-val away-score">{{ match.away_team_score|default:"0" }}</span>
+                    </div>
+
+                    <div class="text-start flex-fill">
+                        <h2 class="team-name-lg mb-0">{{ match.away_team }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        <div class="col-lg-7">
+
+            {% if live_analysis %}
+            <div class="card bg-dark border border-secondary border-opacity-25 mb-4">
+                <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                    <h6 class="mb-0 text-white fw-bold"><i class="bi bi-speedometer2 text-danger me-2"></i>Momentum & Pressão (15')</h6>
+                </div>
+                <div class="card-body">
+
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mb-1">
+                            <span>PRESSÃO HOME (<span id="pressure-val-home">50</span>)</span>
+                            <span>PRESSÃO AWAY (<span id="pressure-val-away">50</span>)</span>
+                        </div>
+                        <div class="pressure-wrapper">
+                            <div class="pressure-bar p-home" id="pressure-bar-home" style="width: 50%"></div>
+                            <div class="pressure-bar p-away" id="pressure-bar-away" style="width: 50%"></div>
+                        </div>
+                    </div>
+
+                    <div class="row text-center mb-4 g-2">
+                        <div class="col-4">
+                            <div class="bg-secondary bg-opacity-10 rounded p-2">
+                                <span class="d-block text-white fw-bold live-corners">-</span>
+                                <small class="text-muted" style="font-size: 0.7rem;">CANTOS (15')</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="bg-secondary bg-opacity-10 rounded p-2">
+                                <span class="d-block text-white fw-bold live-shots">-</span>
+                                <small class="text-muted" style="font-size: 0.7rem;">CHUTES (15')</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="bg-secondary bg-opacity-10 rounded p-2">
+                                <span class="d-block text-white fw-bold live-xg">-</span>
+                                <small class="text-muted" style="font-size: 0.7rem;">xG TOTAL</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h6 class="text-warning small fw-bold text-uppercase mb-2">Insights da IA:</h6>
+                        <div class="live-insights-list">
+                            <div class="text-muted small fst-italic">Carregando análise...</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card bg-dark border border-secondary border-opacity-25">
+                <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                    <h6 class="mb-0 text-white fw-bold"><i class="bi bi-bar-chart-fill text-primary me-2"></i>Estatísticas do Jogo</h6>
+                </div>
+                <div class="card-body">
+                    {% if stat_labels %}
+                        {% for key, label in stat_labels %}
+                        <div class="stat-row" data-stat-key="{{ key }}">
+                            <div class="stat-header">
+                                <span class="{{ key }}-home text-primary">0</span>
+                                <span class="text-muted text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">{{ label }}</span>
+                                <span class="{{ key }}-away text-danger">0</span>
+                            </div>
+                            <div class="stat-progress-bg">
+                                <div class="stat-fill fill-home" style="width: 50%"></div>
+                                <div class="stat-fill fill-away" style="width: 50%"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-center text-muted">Aguardando dados...</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-5">
+
+            {% if analysis %}
+            <div class="card bg-dark border border-info border-opacity-50 mb-4 shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-info fw-bold text-uppercase mb-3">Probabilidades (Pré-Jogo)</h6>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="border border-secondary border-opacity-25 rounded p-2">
+                                <small class="text-muted d-block">Over 2.5</small>
+                                <span class="fw-bold text-white">{{ analysis.probabilities.over_2_5|default:"-" }}%</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border border-secondary border-opacity-25 rounded p-2">
+                                <small class="text-muted d-block">Ambas Marcam</small>
+                                <span class="fw-bold text-white">{{ analysis.probabilities.btts|default:"-" }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if streak_analysis %}
+            <div class="card bg-dark border border-warning border-opacity-25">
+                <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                    <h6 class="mb-0 text-white fw-bold"><i class="bi bi-fire text-warning me-2"></i>Tendências Históricas</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for item in streak_analysis.general %}
+                            {% if item.hot_streak %}
+                            <div class="list-group-item bg-transparent text-white-50 border-secondary border-opacity-10 px-4 py-3">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-check-circle-fill text-success me-3"></i>
+                                    <div>
+                                        <span class="d-block text-white fw-semibold">{{ item.text }}</span>
+                                        <small class="text-muted" style="font-size: 0.75rem;">GERAL</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% for item in streak_analysis.head2head %}
+                            {% if item.hot_streak %}
+                            <div class="list-group-item bg-transparent text-white-50 border-secondary border-opacity-10 px-4 py-3">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-people-fill text-info me-3"></i>
+                                    <div>
+                                        <span class="d-block text-white fw-semibold">{{ item.text }}</span>
+                                        <small class="text-muted" style="font-size: 0.75rem;">CONFRONTO DIRETO</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if not streak_analysis.general and not streak_analysis.head2head %}
+                            <div class="p-4 text-center text-muted small">
+                                Nenhuma tendência relevante encontrada.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const MATCH_ID = "{{ match.id }}";
+    const CSRF_TOKEN = "{{ csrf_token }}";
+
+    function safeUpdateText(selector, value) {
+        // Arredonda se for decimal
+        if (typeof value === 'number' && value % 1 !== 0) {
+            value = value.toFixed(2);
+        }
+        const els = document.querySelectorAll(selector);
+        els.forEach(el => el.textContent = value);
+    }
+
+    // Atualiza barras de estatísticas
+    function updateBar(key, homeVal, awayVal) {
+        const h = parseFloat(homeVal) || 0;
+        const a = parseFloat(awayVal) || 0;
+        const total = h + a;
+
+        // Atualiza Texto
+        safeUpdateText(`.${key}-home`, h);
+        safeUpdateText(`.${key}-away`, a);
+
+        // Calcula Largura
+        let pctHome = 50, pctAway = 50;
+        if (total > 0) {
+            pctHome = (h / total) * 100;
+            pctAway = (a / total) * 100;
+        }
+
+        // Seleciona a linha pelo data-key
+        const row = document.querySelector(`[data-stat-key="${key}"]`);
+        if (row) {
+            const barH = row.querySelector('.fill-home');
+            const barA = row.querySelector('.fill-away');
+            if(barH) barH.style.width = `${pctHome}%`;
+            if(barA) barA.style.width = `${pctAway}%`;
+        }
+    }
+
+    function fetchLiveStats() {
+        fetch("{% url 'post-data-stats' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-CSRFToken": CSRF_TOKEN
+            },
+            body: `event_id=${MATCH_ID}`
+        })
+        .then(res => res.json())
+        .then(data => {
+            // 1. Placar e Minuto
+            safeUpdateText('.home-score', data.home_score);
+            safeUpdateText('.away-score', data.away_score);
+            if(data.minute) safeUpdateText('.minute-badge', data.minute + "'");
+
+            // 2. Pressão (Termômetro)
+            if (data.possession_home && data.possession_away) {
+                // Usando Posse de Bola como proxy para a pressão 0-100
+                // NOTA: Você deve usar um índice de pressão real (0-100) enviado pelo Backend!
+                const pHome = data.possession_home;
+                const pAway = data.possession_away;
+
+                const barH = document.getElementById('pressure-bar-home');
+                const barA = document.getElementById('pressure-bar-away');
+
+                // Assegura que o total é 100% para a barra (e evita bugs se a soma for 100.0)
+                if(barH) barH.style.width = `${pHome}%`;
+                if(barA) barA.style.width = `${pAway}%`;
+
+                safeUpdateText('#pressure-val-home', parseInt(pHome));
+                safeUpdateText('#pressure-val-away', parseInt(pAway));
+            }
+            // 3. Mini Stats
+            if (data.analysis_live && data.analysis_live.stats_window) {
+                safeUpdateText('.live-corners', data.analysis_live.stats_window.corners);
+                safeUpdateText('.live-shots', data.analysis_live.stats_window.shots);
+                // Soma xG total para mostrar
+                const xgTotal = (data.analysis_live.stats_window.xg_home || 0) + (data.analysis_live.stats_window.xg_away || 0);
+                safeUpdateText('.live-xg', xgTotal.toFixed(2));
+            }
+
+            // 4. Insights
+            if (data.analysis_live) {
+                // Atualiza estatísticas do card
+                updateStatsCard(data);
+
+                // Gera NOVA análise live automaticamente
+                const analysis = generateLiveAnalysis(data);
+
+                console.log("Insights:", analysis);
+
+                // Atualiza no objeto (caso você envie de volta)
+                data.analysis_live = analysis;
+
+                const insightsArray = [];
+
+                // Preenche insights
+                if (analysis.pressure_reason_home) insightsArray.push(analysis.pressure_reason_home);
+                if (analysis.pressure_reason_away) insightsArray.push(analysis.pressure_reason_away);
+                if (analysis.corners_signal) insightsArray.push(analysis.corners_signal);
+                if (analysis.goal_warning) insightsArray.push(analysis.goal_warning);
+
+                // Tendência Over 2.5
+                if (analysis.over_25_trend) insightsArray.push("Tendência: " + analysis.over_25_trend);
+
+                // Renderização da UI
+                const list = document.querySelector('.live-insights-list');
+
+                if (list) {
+                    list.innerHTML = '';
+
+                    if (insightsArray.length === 0) {
+                        list.innerHTML = '<div class="text-muted small">Sem alertas no momento.</div>';
+                    } else {
+                        insightsArray.forEach(txt => {
+                            const div = document.createElement('div');
+                            div.className = 'insight-box';
+
+                            // destaque automático
+                            const icon = (txt.includes('ALTO risco') || txt.includes('Home criou'))
+                                ? '🔥 '
+                                : 'ℹ️ ';
+
+                            div.innerHTML = `${icon}${txt}`;
+                            list.appendChild(div);
+                        });
+                    }
+                }
+            }
+            function generateLiveAnalysis(data) {
+                const analysis = {
+                    pressure_home: false,
+                    pressure_away: false,
+                    pressure_reason_home: "",
+                    pressure_reason_away: "",
+                    corners_signal: "",
+                    goal_warning: "",
+                    over_25_trend: "",
+                };
+
+                const {
+                    xg_home, xg_away,
+                    shots_total_home, shots_total_away,
+                    big_chances_home, big_chances_away,
+                    touches_box_home, touches_box_away,
+                    final_third_entries_home, final_third_entries_away,
+                    corners_home, corners_away,
+                    yellow_home, yellow_away,
+                    fouls_home, fouls_away
+                } = data;
+
+                // -----------------------------
+                // 🔥 1. PRESSÃO HOME
+                // -----------------------------
+                let homePressureScore = 0;
+
+                if (xg_home > xg_away) homePressureScore++;
+                if (shots_total_home > shots_total_away) homePressureScore++;
+                if (big_chances_home > big_chances_away) homePressureScore++;
+                if (touches_box_home > touches_box_away) homePressureScore++;
+                if (final_third_entries_home > final_third_entries_away) homePressureScore++;
+
+                if (homePressureScore >= 3) {
+                    analysis.pressure_home = true;
+                    analysis.pressure_reason_home = "Home criou mais perigo e está pressionando.";
+                }
+
+                // -----------------------------
+                // 🔥 2. PRESSÃO AWAY
+                // -----------------------------
+                let awayPressureScore = 0;
+
+                if (xg_away > xg_home) awayPressureScore++;
+                if (shots_total_away > shots_total_home) awayPressureScore++;
+                if (big_chances_away > big_chances_home) awayPressureScore++;
+                if (touches_box_away > touches_box_home) awayPressureScore++;
+                if (final_third_entries_away > final_third_entries_home) awayPressureScore++;
+
+                if (awayPressureScore >= 3) {
+                    analysis.pressure_away = true;
+                    analysis.pressure_reason_away = "Away cria mais perigo e pressiona o adversário.";
+                }
+
+                // -----------------------------
+                // 🔥 3. CORNERS SIGNAL
+                // -----------------------------
+                const cornerDiff = corners_home - corners_away;
+
+                if (cornerDiff >= 4) {
+                    analysis.corners_signal = "Forte pressão do Home pelos lados (escanteios altos).";
+                } else if (cornerDiff <= -4) {
+                    analysis.corners_signal = "Away pressiona muito pelas laterais (escanteios altos).";
+                } else {
+                    analysis.corners_signal = "";
+                }
+
+                // -----------------------------
+                // 🔥 4. GOAL WARNING
+                // -----------------------------
+                const totalXG = xg_home + xg_away;
+                const totalBigChances = big_chances_home + big_chances_away;
+
+                if (totalXG > 2.0 || totalBigChances >= 3) {
+                    analysis.goal_warning = "ALTO risco de gol iminente!";
+                } else if (totalXG > 1.2) {
+                    analysis.goal_warning = "Jogo moderado com possibilidade de gol.";
+                } else {
+                    analysis.goal_warning = "Baixo risco de gol no momento.";
+                }
+
+                // -----------------------------
+                // 🔥 5. TENDÊNCIA OVER 2.5
+                // -----------------------------
+                if (totalXG >= 2.0 || totalBigChances >= 3) {
+                    analysis.over_25_trend = "Alta";
+                } else if (totalXG >= 1.2) {
+                    analysis.over_25_trend = "Normal";
+                } else {
+                    analysis.over_25_trend = "Baixa";
+                }
+
+                return analysis;
+            }
+
+            function updateStatsCard(data) {
+                if (!data) return;
+
+                const stats = data; // seu JSON já vem direto
+                console.log(stats)
+
+                document.querySelectorAll(".stat-row").forEach(row => {
+                    const key = row.dataset.statKey;  // ex: xg, shots_on, corners...
+
+                    if (!key) return;
+
+                    const homeVal = stats[key + "_home"];
+                    const awayVal = stats[key + "_away"];
+
+                    const homeSpan = row.querySelector(`.${key}-home`);
+                    const awaySpan = row.querySelector(`.${key}-away`);
+                    const homeFill = row.querySelector(".fill-home");
+                    const awayFill = row.querySelector(".fill-away");
+
+                    // não tem esse campo no JSON → ignora
+                    if (homeVal === undefined || awayVal === undefined) return;
+
+                    // Atualiza os números
+                    homeSpan.textContent = homeVal;
+                    awaySpan.textContent = awayVal;
+
+                    // Calcula porcentagem das barras
+                    const total = homeVal + awayVal;
+                    const homePct = total === 0 ? 50 : (homeVal / total) * 100;
+                    const awayPct = total === 0 ? 50 : (awayVal / total) * 100;
+
+                    homeFill.style.width = homePct + "%";
+                    awayFill.style.width = awayPct + "%";
+                });
+            }
+
+            // 5. Barras de Stats (Usando as chaves LIMPAS que definimos na View)
+            const statsKeys = [
+                'possession', 'xg', 'shots', 'corners', 'big_chances',
+                'final_third', 'box_touches', 'fouls', 'yellow_cards'
+            ];
+
+            statsKeys.forEach(key => {
+                // O JSON do Python envia "xg_home", "xg_away", etc.
+                updateBar(key, data[`${key}_home`], data[`${key}_away`]);
+            });
+
+        })
+        .catch(err => console.error("Live Update Error:", err));
+    }
+
+    // Init
+    fetchLiveStats();
+    setInterval(fetchLiveStats, 10000);
+});
+</script>
+{% endblock %}

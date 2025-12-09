@@ -1,0 +1,31 @@
+.text-dim {
+color: #bbbbbb !important; /* substitui text-muted para tema dark */
+}
+
+.card {
+background: #1b1b1e;
+border: 1px solid rgba(255,255,255,0.05);
+border-radius: 14px;
+transition: all 0.3s ease;
+}
+.card:hover {
+transform: translateY(-3px);
+box-shadow: 0 4px 16px rgba(0, 255, 145, 0.12);
+}
+
+.table tbody tr {
+transition: background-color 0.2s ease;
+}
+.table tbody tr:hover {
+background-color: rgba(0,255,145,0.06);
+}
+
+.btn-outline-primary, .btn-outline-success {
+border-radius: 6px;
+transition: all 0.25s ease;
+}
+
+@media (max-width: 768px) {
+.card { padding: 1.2rem !important; }
+.table th, .table td { font-size: 0.85rem; }
+}

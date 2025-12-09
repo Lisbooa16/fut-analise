@@ -1,0 +1,131 @@
+from django.db import models
+
+from jogos.models import Match
+
+
+class Status(models.IntegerChoices):
+    INCREASE = 1, "Depósito"
+    DECREASE = 2, "Retirada"
+
+
+class Bankroll(models.Model):
+    name = models.CharField(max_length=255)
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    initial_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"{self.name} - R$ {self.balance}"
+
+    def deposit(self, amount):
+        self.balance += amount
+        self.save(update_fields=["balance"])
+
+    def withdraw(self, amount):
+        if self.balance >= amount:
+            self.balance -= amount
+            self.save(update_fields=["balance"])
+        else:
+            raise ValueError("Saldo insuficiente na banca!")
+
+class BankrollHistory(models.Model):
+
+    bankroll = models.ForeignKey(
+        'Bankroll',
+        on_delete=models.CASCADE,
+        related_name='history'
+    )
+    status = models.IntegerField(choices=Status.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        direction = "↑" if self.status == Status.INCREASE else "↓"
+        return f"{direction} R$ {self.amount:.2f} — {self.get_status_display()}"
+
+    class Meta:
+        verbose_name = "Movimentação da Banca"
+        verbose_name_plural = "Histórico da Banca"
+        ordering = ["-created_at"]
+
+class Bet(models.Model):
+    bankroll = models.ForeignKey(
+        'Bankroll', on_delete=models.CASCADE, related_name='bets'
+    )
+    match = models.ForeignKey(
+        Match, on_delete=models.CASCADE, related_name='bets'
+    )
+    market = models.CharField(max_length=255)  # Ex: "+1.5 gols", "Vitória do Palmeiras"
+    odd = models.DecimalField(max_digits=6, decimal_places=2)
+    stake = models.DecimalField(max_digits=10, decimal_places=2)  # valor apostado
+    potential_profit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    result = models.CharField(
+        max_length=20,
+        choices=[('PENDING', 'Pendente'), ('GREEN', 'Green'), ('RED', 'Red')],
+        default='PENDING'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def calculated_potential_profit(self):
+        """Lucro esperado SE a aposta for green"""
+        return (self.stake * self.odd) - self.stake
+
+    def __str__(self):
+        return f"{self.match} | {self.market} ({self.result})"
+
+    def calculate_profit(self):
+        """Calcula o possível retorno."""
+        return round(self.stake * self.odd, 2)
+
+    def register_bet(self):
+        """Registra aposta e debita da banca."""
+        self.potential_profit = self.calculate_profit()
+        self.bankroll.withdraw(self.stake)
+        self.save()
+
+    def settle_bet(self, is_green: bool):
+        """Atualiza o resultado e ajusta saldo da banca."""
+        if is_green:
+            self.result = 'GREEN'
+            self.bankroll.deposit(self.potential_profit)
+        else:
+            self.result = 'RED'
+        self.save(update_fields=["result"])
+
+class BetSlip(models.Model):
+    bankroll = models.ForeignKey('Bankroll', on_delete=models.CASCADE)
+    total_stake = models.DecimalField(max_digits=10, decimal_places=2)
+    total_odd = models.DecimalField(max_digits=6, decimal_places=2)
+    potential_profit = models.DecimalField(max_digits=10, decimal_places=2)
+    result = models.CharField(
+        max_length=20,
+        choices=[('PENDING', 'Pendente'), ('GREEN', 'Green'), ('RED', 'Red')],
+        default='PENDING'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AllowedLeague(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    active = models.BooleanField(default=True, help_text="Se desmarcado, a liga será ignorada no scraping.")
+
+    class Meta:
+        verbose_name = "Liga Permitida"
+        verbose_name_plural = "Ligas Permitidas"
+
+    def __str__(self):
+        return self.name
+
+class PossibleBet(models.Model):
+    event_id = models.CharField(max_length=50)
+    market = models.CharField(max_length=255)
+    probability = models.PositiveIntegerField(default=50)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.market} ({self.probability}%)"

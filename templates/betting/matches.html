@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% load textutils %}
+{% block title %}Jogos Disponíveis{% endblock %}
+
+{% block content %}
+
+<style>
+    :root {
+        --bg-card: #1e1e24;
+        --border-color: rgba(255, 255, 255, 0.08);
+        --text-muted: #a1a1aa;
+        --highlight: #00ff91;
+    }
+
+    /* --- Filter Card --- */
+    .filter-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+    }
+
+    .form-control-dark, .form-select-dark {
+        background-color: #121214;
+        border: 1px solid var(--border-color);
+        color: #fff;
+        border-radius: 8px;
+    }
+    .form-control-dark:focus, .form-select-dark:focus {
+        background-color: #121214;
+        border-color: var(--highlight);
+        box-shadow: 0 0 0 2px rgba(0, 255, 145, 0.1);
+        color: #fff;
+    }
+    .form-control-dark::placeholder { color: #555; }
+
+    /* --- Match Card --- */
+    .match-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .match-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .live-badge {
+        background: rgba(255, 75, 91, 0.15);
+        color: #ff4b5b;
+        border: 1px solid rgba(255, 75, 91, 0.3);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        animation: pulse 2s infinite;
+    }
+
+    .finished-badge {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-muted);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+
+    .score-box {
+        background: #121214;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 0.5rem 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 1rem;
+        font-family: monospace;
+    }
+    .score-val { font-size: 1.5rem; font-weight: 700; color: var(--highlight); }
+    .score-div { color: #555; }
+
+    .team-name {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #fff;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* --- Stats Mini --- */
+    .stats-mini {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        background: rgba(255,255,255,0.03);
+        border-radius: 8px;
+        padding: 8px;
+        margin-top: 12px;
+    }
+    .stats-val { color: #fff; font-weight: 600; margin-left: 4px; }
+
+    /* --- Pagination --- */
+    .page-link-custom {
+        background-color: var(--bg-card);
+        border-color: var(--border-color);
+        color: var(--text-muted);
+    }
+    .page-link-custom:hover {
+        background-color: #333;
+        color: #fff;
+        border-color: #555;
+    }
+    .page-item.active .page-link-custom {
+        background-color: var(--highlight);
+        border-color: var(--highlight);
+        color: #000;
+        font-weight: 700;
+    }
+
+</style>
+
+<div class="container-fluid px-3 px-md-5 py-4">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold text-white mb-3 mb-md-0">
+      <i class="bi bi-controller text-primary me-2"></i>Jogos Disponíveis
+    </h2>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+      <i class="bi bi-arrow-left me-1"></i> Dashboard
+    </a>
+  </div>
+
+  <div class="card shadow-lg mb-5 filter-card">
+    <div class="card-body p-4">
+      <form method="get" class="row gy-3 gx-3 align-items-end">
+
+        <div class="col-12 col-md-5 col-lg-4">
+          <label class="small text-secondary fw-bold mb-1">Busca Rápida</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-search"></i></span>
+            <input type="text" name="q" class="form-control form-control-dark" placeholder="Time, liga ou palpite..." value="{{ query }}">
+          </div>
+        </div>
+
+        <div class="col-6 col-md-4 col-lg-3">
+          <label class="small text-secondary fw-bold mb-1">Campeonato</label>
+          <select name="season" class="form-select form-select-dark">
+            <option value="" selected>Todos os Campeonatos</option>
+            {% for id, season_name, league_name in seasons %}
+              <option value="{{ id }}" {% if id|stringformat:"s" == season_id %}selected{% endif %}>
+                {{ league_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-6 col-md-3 col-lg-2">
+            <button type="button" class="btn btn-outline-secondary w-100 fw-semibold" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+                <i class="bi bi-sliders"></i> Filtros
+            </button>
+        </div>
+
+        <div class="col-12 col-md-12 col-lg-3 d-flex align-items-center">
+            <div class="form-check form-switch ms-lg-auto">
+                <input class="form-check-input" type="checkbox" role="switch" id="liveSwitch" name="live" value="1" {% if live == "1" %}checked{% endif %} onchange="this.form.submit()">
+                <label class="form-check-label text-white fw-bold ms-2" for="liveSwitch">Somente Ao Vivo <span class="live-dot ms-1"></span></label>
+            </div>
+        </div>
+
+        <div class="collapse w-100 mt-3" id="advancedFilters">
+          <div class="p-3 bg-dark bg-opacity-50 rounded-3 border border-secondary border-opacity-25">
+              <h6 class="text-white fw-bold mb-3 small text-uppercase"><i class="bi bi-bar-chart-fill text-warning me-2"></i>Métricas Estatísticas</h6>
+
+              <div class="row g-3">
+                <div class="col-6 col-md-2">
+                  <input type="number" step="0.1" name="xg_min" class="form-control form-control-dark form-control-sm" placeholder="Min xG" value="{{ xg_min }}">
+                </div>
+                <div class="col-6 col-md-2">
+                  <input type="number" step="0.1" name="xg_max" class="form-control form-control-dark form-control-sm" placeholder="Max xG" value="{{ xg_max }}">
+                </div>
+
+                <div class="col-6 col-md-2">
+                  <input type="number" step="1" name="possession_min" class="form-control form-control-dark form-control-sm" placeholder="Min Posse %" value="{{ possession_min }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <input type="number" step="1" name="possession_max" class="form-control form-control-dark form-control-sm" placeholder="Max Posse %" value="{{ possession_max }}">
+                </div>
+
+                <div class="col-6 col-md-2">
+                  <input type="number" name="shots_min" class="form-control form-control-dark form-control-sm" placeholder="Min Chutes" value="{{ shots_min }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <input type="number" name="shots_max" class="form-control form-control-dark form-control-sm" placeholder="Max Chutes" value="{{ shots_max }}">
+                </div>
+              </div>
+          </div>
+        </div>
+
+        <div class="col-12 mt-3 pt-3 border-top border-secondary border-opacity-25 d-flex gap-2">
+          <button type="submit" class="btn btn-success fw-bold px-4">
+            <i class="bi bi-funnel-fill"></i> Filtrar
+          </button>
+          {% if request.GET.q or request.GET.season or request.GET.live or xg_min %}
+          <a href="{% url 'matches_list' %}" class="btn btn-outline-danger fw-semibold">
+            <i class="bi bi-x-lg"></i> Limpar
+          </a>
+          {% endif %}
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  {% if matches %}
+  <div class="row g-4">
+    {% for m in matches %}
+    <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+      <div class="match-card">
+
+        <div class="card-body p-4 text-center">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <span class="text-secondary small fw-bold">
+                    <i class="bi bi-calendar3 me-1"></i> {{ m.date|date:"d/m H:i" }}
+                </span>
+
+                {% if not m.finalizado %} {% if m.status_type == 'inprogress' or not m.finalizado %}
+                        <span class="live-badge"><i class="bi bi-broadcast"></i> Ao Vivo</span>
+                     {% else %}
+                        <span class="badge bg-secondary text-dark">Agendado</span>
+                     {% endif %}
+                {% else %}
+                    <span class="finished-badge">Finalizado</span>
+                {% endif %}
+            </div>
+
+            <div class="mb-2">
+                <h5 class="team-name mb-2">{{ m.home_team }}</h5>
+                <div class="score-box mb-2">
+                    <span class="score-val">{{ m.home_team_score|default:"-" }}</span>
+                    <span class="score-div">:</span>
+                    <span class="score-val">{{ m.away_team_score|default:"-" }}</span>
+                </div>
+                <h5 class="team-name mt-2">{{ m.away_team }}</h5>
+            </div>
+
+            {% if m.stats %}
+            <div class="stats-mini d-flex justify-content-around">
+                <span>xG: <span class="stats-val text-warning">{{ m.stats.xg_home|floatformat:1 }} - {{ m.stats.xg_away|floatformat:1 }}</span></span>
+                <span>Chutes: <span class="stats-val text-info">{{ m.stats.shots_home|floatformat:0 }} - {{ m.stats.shots_away|floatformat:0 }}</span></span>
+            </div>
+            {% else %}
+            <div class="stats-mini text-center text-muted fst-italic">
+                Aguardando estatísticas...
+            </div>
+            {% endif %}
+
+        </div>
+
+        <div class="card-footer bg-transparent border-0 p-3 pt-0">
+            <div class="row g-2">
+                <div class="col-6">
+                    <a href="{% url 'match_detail' m.id %}" class="btn btn-outline-light w-100 btn-sm fw-semibold">
+                        Detalhes
+                    </a>
+                </div>
+                <div class="col-6">
+                    <a href="{% url 'place_bet' m.id %}" class="btn btn-primary w-100 btn-sm fw-bold">
+                        Apostar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if page_obj.has_other_pages %}
+  <nav class="mt-5">
+    <ul class="pagination justify-content-center">
+      {% with params=params.urlencode %}
+
+      {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link page-link-custom rounded-start-pill px-3" href="?page={{ page_obj.previous_page_number }}&{{ params }}">
+           <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link page-link-custom">{{ num }}</span></li>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item"><a class="page-link page-link-custom" href="?page={{ num }}&{{ params }}">{{ num }}</a></li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link page-link-custom rounded-end-pill px-3" href="?page={{ page_obj.next_page_number }}&{{ params }}">
+           <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      {% endif %}
+
+      {% endwith %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="text-center py-5 mt-4">
+    <div class="d-inline-flex align-items-center justify-content-center bg-dark bg-opacity-50 rounded-circle mb-4" style="width: 80px; height: 80px;">
+        <i class="bi bi-search text-secondary opacity-50 display-6"></i>
+    </div>
+    <h4 class="text-white fw-bold">Nenhum jogo encontrado</h4>
+    <p class="text-secondary">Tente mudar os filtros ou busque por outro time.</p>
+    {% if request.GET %}
+    <a href="{% url 'matches_list' %}" class="btn btn-outline-warning mt-2">Limpar todos os filtros</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+{% endblock %}

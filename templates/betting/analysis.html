@@ -1,0 +1,55 @@
+<h1>📊 Análises das Partidas</h1>
+<hr>
+
+{% for item in insights %}
+    <div style="padding:20px; border:1px solid #ddd; border-radius:8px; margin-bottom:20px; background:white;">
+
+        <h2>
+            {{ item.match.home_team.name }}
+            {{ item.match.home_team_score|default:"-" }}
+            x
+            {{ item.match.away_team_score|default:"-" }}
+            {{ item.match.away_team.name }}
+        </h2>
+
+        <p><strong>Data:</strong> {{ item.match.date }}</p>
+
+        <hr>
+
+        <h3>📊 Probabilidades</h3>
+        <ul>
+          <li>Over 1.5: {{ item.analysis.probabilities.over_1_5 }}%</li>
+          <li>Over 2.5: {{ item.analysis.probabilities.over_2_5 }}%</li>
+          <li>BTTS: {{ item.analysis.probabilities.btts }}%</li>
+          <li>Gol no 2º tempo: {{ item.analysis.probabilities.goal_h2 }}%</li>
+        </ul>
+
+        <h3>🎯 Odd Justa</h3>
+        <ul>
+          <li>Over 2.5: {{ item.analysis.odds.over_2_5 }}</li>
+          <li>BTTS: {{ item.analysis.odds.btts }}</li>
+        </ul>
+
+        <h3>🔮 Placar Estimado</h3>
+        <p>{{ item.analysis.projected_score }}</p>
+
+        <h3>🧠 Recomendação Final</h3>
+        <p>
+            {{ item.analysis.recommendation }}
+            <br>
+            <strong>Confiança: {{ item.analysis.confidence }}%</strong>
+        </p>
+
+        <h3>💡 Insights do modelo</h3>
+        <ul>
+            {% for line in item.analysis.insights %}
+                <li>{{ line }}</li>
+            {% empty %}
+                <li>Nenhum insight gerado.</li>
+            {% endfor %}
+        </ul>
+
+    </div>
+{% empty %}
+    <p>Nenhuma partida analisada.</p>
+{% endfor %}

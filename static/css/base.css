@@ -1,0 +1,354 @@
+/*
+==========================================================================
+   THEME: NEON DARK SPORTS ANALYTICS
+   v2.0 - Optimized & Modernized
+==========================================================================
+*/
+
+:root {
+    /* --- PALETA DE CORES --- */
+    --primary: #00ff91;       /* Verde Neon (Ação/Positivo) */
+    --primary-dim: rgba(0, 255, 145, 0.1); /* Verde suave para fundos */
+    --accent: #00cc73;        /* Verde Escuro (Hover) */
+
+    --info: #00c0ff;          /* Ciano (Informação/Streaks) */
+    --info-dim: rgba(0, 192, 255, 0.1);
+
+    --danger: #ff4b5b;        /* Vermelho (Perigo/Derrota) */
+    --warning: #ffd700;       /* Amarelo (Atenção - Uso Mínimo) */
+
+    /* --- FUNDOS --- */
+    --bg-body: #09090b;       /* Fundo mais profundo (quase preto) */
+    --bg-card: #141417;       /* Fundo de cards base */
+    --bg-surface: #1e1e24;    /* Elementos sobrepostos */
+    --bg-glass: rgba(30, 30, 36, 0.7); /* Efeito vidro */
+
+    /* --- TEXTO --- */
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
+
+    /* --- BORDAS E SOMBRAS --- */
+    --border-light: rgba(255, 255, 255, 0.08);
+    --shadow-glow: 0 0 20px rgba(0, 255, 145, 0.15);
+    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.5);
+
+    /* --- MAPAS BOOTSTRAP (Compatibilidade) --- */
+    --bs-primary: var(--primary);
+    --bs-body-bg: var(--bg-body);
+}
+
+/* ==========================================
+   1. ESTRUTURA GLOBAL
+   ========================================== */
+
+body {
+    background-color: var(--bg-body) !important;
+    color: var(--text-main) !important;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.02em;
+    overflow-x: hidden;
+    background-image: radial-gradient(circle at top center, #1a2e25 0%, transparent 40%); /* Luz ambiente sutil no topo */
+    background-attachment: fixed;
+}
+
+a {
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+/* Scrollbar Customizada */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-body); }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ==========================================
+   2. COMPONENTES DE UI (Botões, Badges)
+   ========================================== */
+
+/* Botões Modernos */
+.btn {
+    border-radius: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.6rem 1.2rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary, .action-button {
+    background: var(--primary) !important;
+    border: 1px solid var(--primary) !important;
+    color: #000 !important;
+    box-shadow: 0 4px 15px rgba(0, 255, 145, 0.3);
+}
+
+.btn-primary:hover, .action-button:hover {
+    background: var(--accent) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 255, 145, 0.5);
+}
+
+.btn-outline-info {
+    border-color: var(--info);
+    color: var(--info);
+    background: transparent;
+}
+.btn-outline-info:hover {
+    background: var(--info-dim);
+    color: #fff;
+    box-shadow: 0 0 15px var(--info-dim);
+}
+
+/* Badges e Labels */
+.badge {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* ==========================================
+   3. HERO SECTION & PLACAR
+   ========================================== */
+
+.match-detail-better {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-light);
+    border-top: 1px solid rgba(0, 255, 145, 0.2); /* Topo iluminado */
+    border-radius: 24px;
+    box-shadow: var(--shadow-card);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Placar Principal */
+.score-box-detail {
+    background: rgba(14, 14, 17, 0.9);
+    border: 1px solid rgba(0, 255, 145, 0.3);
+    box-shadow: 0 0 30px rgba(0, 255, 145, 0.1) inset; /* Brilho interno */
+    border-radius: 16px !important;
+    padding: 1.5rem 3rem;
+    position: relative;
+}
+
+.score-value-detail {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: var(--primary);
+    text-shadow: 0 0 20px rgba(0, 255, 145, 0.5); /* Efeito Neon */
+    font-variant-numeric: tabular-nums;
+}
+
+.score-divider-detail {
+    color: var(--text-muted);
+    font-weight: 300;
+    opacity: 0.5;
+}
+
+.team-name-detail {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: linear-gradient(to bottom, #fff, #ccc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Status Pulsante */
+.pulse-effect {
+    animation: pulse-green 2s infinite;
+}
+@keyframes pulse-green {
+    0% { text-shadow: 0 0 0 rgba(0, 255, 145, 0); opacity: 1; }
+    50% { text-shadow: 0 0 10px rgba(0, 255, 145, 0.5); opacity: 0.8; }
+    100% { text-shadow: 0 0 0 rgba(0, 255, 145, 0); opacity: 1; }
+}
+
+.status-live { color: var(--primary) !important; text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem; }
+.status-finalizado { color: var(--danger) !important; text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem; }
+
+/* ==========================================
+   4. CARDS DE ANÁLISE (Glassmorphism)
+   ========================================== */
+
+.analysis-card, .live-analysis-card, .streaks-analysis-card, .forecast-card, .insights-card, .standings-card {
+    background: var(--bg-glass) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-light) !important;
+    border-radius: 16px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    border-color: rgba(255,255,255,0.15) !important;
+}
+
+.card-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border-light);
+    padding: 1.25rem 1.5rem;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+}
+
+/* Cores específicas dos headers */
+.live-analysis-card .card-header { color: #fff; border-left: 4px solid var(--primary); }
+.analysis-card .card-header { color: var(--info); border-left: 4px solid var(--info); }
+.streaks-card .card-header { color: var(--info); border-left: 4px solid var(--info); } /* Streaks agora Ciano */
+
+/* Elementos Internos dos Cards */
+.probability-item {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    transition: 0.2s;
+}
+.probability-item:hover {
+    background: #27272a;
+    border-color: var(--primary);
+}
+
+.projected-score-box {
+    background: var(--bg-surface);
+    border: 1px dashed var(--info);
+    color: var(--info);
+    font-family: monospace;
+    letter-spacing: 2px;
+}
+
+.recommendation-final-box {
+    background: linear-gradient(135deg, rgba(0, 255, 145, 0.1), rgba(0, 0, 0, 0));
+    border: 1px solid var(--primary);
+    position: relative;
+    overflow: hidden;
+}
+.recommendation-final-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: var(--primary);
+}
+
+/* ==========================================
+   5. STREAKS (Tema Ciano)
+   ========================================== */
+
+.streaks-analysis-card, .streak-box {
+    border-color: rgba(0, 192, 255, 0.3) !important;
+    background: linear-gradient(to bottom, rgba(0, 192, 255, 0.05), transparent) !important;
+}
+
+.streak-item {
+    background: var(--bg-surface);
+    border-left: 3px solid var(--info) !important;
+    border: 1px solid var(--border-light);
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 0.8rem;
+}
+
+.text-warning { color: var(--info) !important; } /* Substitui amarelo por ciano nos textos */
+.bg-warning { background-color: var(--info) !important; color: #000 !important; }
+
+/* ==========================================
+   6. ESTATÍSTICAS & TABELAS
+   ========================================== */
+
+.stats-table-wrapper {
+    background: var(--bg-surface);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-light);
+}
+
+.stats-table tr {
+    transition: background 0.2s;
+}
+.stat-row:nth-child(even) { background-color: rgba(255,255,255,0.02) !important; }
+.stat-row:hover { background-color: rgba(255,255,255,0.05) !important; }
+
+.stat-bar-container { width: 40%; min-width: 150px; }
+
+.stat-progress-bar {
+    height: 8px;
+    background: #333;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+}
+
+.progress-bar {
+    height: 100%;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.home-bar { background: var(--primary); box-shadow: 0 0 10px var(--primary-dim); }
+.away-bar { background: var(--info); box-shadow: 0 0 10px var(--info-dim); }
+
+/* xG Destaque */
+.xg-home, .xg-away {
+    font-size: 1.4rem;
+    font-weight: 800;
+}
+.xg-home.text-warning, .xg-away.text-warning {
+    color: var(--primary) !important; /* Vencedor xG em Verde */
+    text-shadow: 0 0 10px var(--primary-dim);
+}
+
+/* ==========================================
+   7. TICKETS DE APOSTA
+   ========================================== */
+
+.suggestion-card {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-light) !important;
+    border-top: 3px solid var(--primary) !important;
+    border-radius: 12px;
+    position: relative;
+}
+
+.suggestion-card::after {
+    /* Efeito de ticket rasgado (opcional, visual agradável) */
+    content: "";
+    position: absolute;
+    bottom: -5px; left: 0; width: 100%; height: 5px;
+    background-image: radial-gradient(circle, transparent 50%, var(--bg-surface) 50%);
+    background-size: 10px 10px;
+    display: none; /* Ativar se quiser estilo ticket */
+}
+
+.suggestion-odd-badge {
+    background: var(--primary) !important;
+    color: #000 !important;
+    font-size: 1rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+}
+
+.suggested-bet-box {
+    background: var(--primary);
+    color: #000 !important;
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
+    box-shadow: 0 5px 15px rgba(0, 255, 145, 0.2);
+}
+
+/* ==========================================
+   8. RESPONSIVIDADE
+   ========================================== */
+
+@media (max-width: 768px) {
+    .match-detail-better { padding: 1.5rem !important; }
+    .team-name-detail { font-size: 1.4rem; }
+    .score-value-detail { font-size: 2.5rem; }
+    .score-box-detail { padding: 1rem; }
+
+    .stats-table { font-size: 0.85rem; }
+    .stat-bar-container { display: none; } /* Oculta barras em telas muito pequenas se necessário, ou ajusta largura */
+}

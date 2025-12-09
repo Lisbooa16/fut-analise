@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% block title %}Apostar: {{ match.home_team }} vs {{ match.away_team }}{% endblock %}
+{% block content %}
+
+<style>
+    :root {
+        --bg-card: #1e1e24;
+        --border-color: rgba(255, 255, 255, 0.08);
+        --text-muted: #a1a1aa;
+        --highlight: #00ff91;
+    }
+
+    .bet-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+
+    .match-header {
+        border-bottom: 1px dashed var(--border-color);
+        padding-bottom: 20px;
+        margin-bottom: 20px;
+    }
+
+    .form-control-dark {
+        background-color: #121214;
+        border: 1px solid var(--border-color);
+        color: #fff;
+        border-radius: 12px;
+        padding: 12px;
+        font-weight: 600;
+    }
+    .form-control-dark:focus {
+        background-color: #121214;
+        border-color: var(--highlight);
+        box-shadow: 0 0 0 3px rgba(0, 255, 145, 0.1);
+        color: #fff;
+    }
+
+    .suggestion-btn {
+        background: rgba(0, 255, 145, 0.1);
+        border: 1px solid rgba(0, 255, 145, 0.2);
+        color: var(--highlight);
+        font-size: 0.85rem;
+        padding: 4px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .suggestion-btn:hover {
+        background: var(--highlight);
+        color: #000;
+    }
+
+    .return-box {
+        background: #121214;
+        border-radius: 12px;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+    }
+
+    .alert-custom {
+        background: rgba(255, 193, 7, 0.1);
+        border-left: 4px solid #ffc107;
+        color: #e0e0e0;
+        font-size: 0.9rem;
+    }
+
+</style>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+
+            {% if alerts %}
+                <div class="mb-4">
+                    {% for a in alerts %}
+                    <div class="alert alert-custom p-3 rounded shadow-sm mb-2">
+                        <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i> {{ a }}
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="card bet-card p-4 p-md-5">
+
+                <div class="match-header text-center">
+                    <span class="badge bg-dark border border-secondary text-secondary mb-2">
+                        {{ match.date|date:"d/m H:i" }}
+                    </span>
+                    <h4 class="fw-bold text-white mb-0">
+                        {{ match.home_team }} <span class="text-secondary mx-2">vs</span> {{ match.away_team }}
+                    </h4>
+
+                    {% if probability %}
+                    <div class="mt-2">
+                        <span class="badge bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25">
+                            🔥 Probabilidade Estimada: {{ probability }}%
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-4 bg-dark bg-opacity-50 p-3 rounded-3 border border-secondary border-opacity-25">
+                    <span class="text-secondary fw-bold small text-uppercase">Saldo Disponível</span>
+                    <span class="text-white fw-bold fs-5">R$ {{ bankroll.balance }}</span>
+                </div>
+
+                <form method="post" id="betForm">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <label class="form-label text-secondary fw-bold small text-uppercase">Mercado / Aposta</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-dark border-secondary border-opacity-25 text-secondary"><i class="bi bi-tag-fill"></i></span>
+                            <input type="text" class="form-control form-control-dark" id="market" name="market"
+                                   placeholder="Ex: Vitória do {{ match.home_team }}" required>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label text-secondary fw-bold small text-uppercase d-flex justify-content-between">
+                                Odd
+                                {% if recommended_odd %}
+                                <span class="suggestion-btn" onclick="applyValue('odd', '{{ recommended_odd|floatformat:2 }}')">
+                                    Sugerida: {{ recommended_odd|floatformat:2 }}
+                                </span>
+                                {% endif %}
+                            </label>
+                            <input type="number" class="form-control form-control-dark text-center fs-5" id="odd" name="odd"
+                                   step="0.01" placeholder="1.80" required>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label text-secondary fw-bold small text-uppercase d-flex justify-content-between">
+                                Valor (R$)
+                                {% if recommended_stake %}
+                                <span class="suggestion-btn" onclick="applyValue('stake', '{{ recommended_stake|stringformat:".2f" }}')">
+                                    Sugerido: {{ recommended_stake|floatformat:0 }}
+                                </span>
+                                {% endif %}
+                            </label>
+                            <input type="number" class="form-control form-control-dark text-center fs-5" id="stake" name="stake"
+                                   step="0.01" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="return-box mt-4 text-center">
+                        <small class="text-secondary text-uppercase fw-bold ls-1">Retorno Potencial</small>
+                        <h2 class="text-success fw-bolder mb-0 mt-1" id="returnPreview">R$ 0,00</h2>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-success btn-lg fw-bold py-3 shadow-lg">
+                            <i class="bi bi-check-circle-fill me-2"></i> Confirmar Aposta
+                        </button>
+                        <a href="{% url 'match_detail' match.id %}" class="btn btn-outline-secondary fw-semibold">
+                            Cancelar e Voltar
+                        </a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Função auxiliar para preencher inputs ao clicar na sugestão
+    function applyValue(fieldId, value) {
+        // Substitui vírgula por ponto se necessário
+        const val = value.replace(',', '.');
+        const input = document.getElementById(fieldId);
+        if(input) {
+            input.value = val;
+            // Dispara evento de input para recalcular o retorno
+            input.dispatchEvent(new Event('input'));
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const oddInput = document.getElementById("odd");
+        const stakeInput = document.getElementById("stake");
+        const returnPreview = document.getElementById("returnPreview");
+        const form = document.getElementById("betForm");
+
+        function formatCurrency(value) {
+            return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function updateReturn() {
+            const odd = parseFloat(oddInput.value);
+            const stake = parseFloat(stakeInput.value);
+
+            if (odd && stake && !isNaN(odd) && !isNaN(stake)) {
+                const potential = odd * stake;
+                returnPreview.textContent = formatCurrency(potential);
+                returnPreview.style.color = "#00ff91"; // Highlight color
+            } else {
+                returnPreview.textContent = "R$ 0,00";
+                returnPreview.style.color = "#a1a1aa"; // Muted color
+            }
+        }
+
+        oddInput.addEventListener("input", updateReturn);
+        stakeInput.addEventListener("input", updateReturn);
+
+        form.addEventListener("submit", (e) => {
+            const btn = form.querySelector("button[type='submit']");
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Processando...';
+        });
+    });
+</script>
+
+{% endblock %}

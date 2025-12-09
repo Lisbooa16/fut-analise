@@ -1,0 +1,310 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load currency_filters %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --card-bg: #1e1e2d;
+        --card-border: rgba(255, 255, 255, 0.05);
+        --text-secondary: #a1a1aa;
+    }
+
+    /* Cards Principais (HUB) */
+    .hub-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .hub-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .hub-label {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-secondary);
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    .hub-value {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin: 0;
+        line-height: 1.1;
+    }
+
+    /* Ícones com fundo circular */
+    .icon-box {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1rem;
+        font-size: 1.2rem;
+    }
+    .icon-box.green { background: rgba(0, 255, 145, 0.1); color: #00ff91; }
+    .icon-box.blue { background: rgba(62, 163, 255, 0.1); color: #3ea3ff; }
+    .icon-box.yellow { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
+
+    /* Tabela Estilizada */
+    .hub-table thead th {
+        background-color: rgba(0,0,0,0.2);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--card-border);
+        padding: 1rem;
+    }
+
+    .hub-table tbody td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--card-border);
+        color: #fff;
+        font-size: 0.95rem;
+    }
+
+    .hub-table tbody tr:last-child td { border-bottom: none; }
+    .hub-table tbody tr:hover { background-color: rgba(255,255,255,0.02); }
+
+    /* Badges de Resultado */
+    .result-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+    .res-green { background: rgba(0, 255, 145, 0.15); color: #00ff91; border: 1px solid rgba(0, 255, 145, 0.3); }
+    .res-red { background: rgba(255, 75, 91, 0.15); color: #ff4b5b; border: 1px solid rgba(255, 75, 91, 0.3); }
+
+    /* Botões de Ação na Tabela */
+    .action-icon {
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+    .action-icon:hover { background: rgba(255,255,255,0.1); }
+    .act-check { color: #00ff91; }
+    .act-check:hover { background: #00ff91; color: #000; }
+    .act-x { color: #ff4b5b; }
+    .act-x:hover { background: #ff4b5b; color: #fff; }
+
+</style>
+
+<div class="container-fluid px-3 px-md-5 py-4">
+
+    <div class="d-flex justify-content-between align-items-end mb-5 mt-2">
+        <div>
+            <h6 class="text-secondary mb-1 text-uppercase small ls-1">Visão Geral</h6>
+            <h2 class="fw-bold text-white mb-0">Olá, {{ user_name }}! 👋</h2>
+        </div>
+        <div class="d-none d-md-block">
+            <a href="{% url 'bankroll_view' %}" class="btn btn-outline-light btn-sm px-3 rounded-pill">
+                <i class="bi bi-wallet2 me-2"></i>Gerenciar Banca
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <div class="col-md-6 col-lg-4">
+            <div class="hub-card p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="hub-label">Greens (30 dias)</span>
+                        <h1 class="hub-value text-white">{{ greens_last_30 }}</h1>
+                    </div>
+                    <div class="icon-box green">
+                        <i class="bi bi-lightning-charge-fill"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="hub-card p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="hub-label">Status do Sistema</span>
+                        <h1 class="hub-value text-info">Ativo</h1>
+                    </div>
+                    <div class="icon-box blue">
+                        <i class="bi bi-cpu-fill"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="hub-card p-4 position-relative overflow-hidden">
+                <div class="d-flex justify-content-between align-items-start position-relative" style="z-index: 2;">
+                    <div>
+                        <span class="hub-label">Saldo Disponível</span>
+                        <h1 class="hub-value text-success">{{ bankroll.balance|currency_brl }}</h1>
+                    </div>
+                    <div class="icon-box yellow">
+                        <i class="bi bi-safe2-fill"></i>
+                    </div>
+                </div>
+                <div style="position: absolute; right: -20px; bottom: -20px; width: 100px; height: 100px; background: radial-gradient(circle, rgba(255,193,7,0.2) 0%, rgba(0,0,0,0) 70%); border-radius: 50%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100" style="background: var(--card-bg); border-radius: 16px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold text-white mb-4"><i class="bi bi-pie-chart-fill text-primary me-2"></i>Balanço Financeiro</h5>
+                    <div style="position: relative; height: 250px;">
+                        <canvas id="bankChart"></canvas>
+                    </div>
+                    <div class="mt-4 text-center">
+                        <small class="text-secondary">Comparativo entre Lucro Líquido, Perdas Totais e Saldo Atual.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100" style="background: var(--card-bg); border-radius: 16px;">
+                <div class="card-header border-0 bg-transparent p-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-white mb-0"><i class="bi bi-clock-history text-warning me-2"></i>Últimas Apostas</h5>
+                    <a href="{% url 'matches_list' %}" class="text-decoration-none small fw-bold text-primary">Novo Jogo <i class="bi bi-arrow-right"></i></a>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table hub-table align-middle text-center mb-0">
+                        <thead>
+                            <tr>
+                                <th class="text-start ps-4">Partida</th>
+                                <th>Odd</th>
+                                <th>Valor</th>
+                                <th>Resultado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for bet in bets %}
+                            <tr>
+                                <td class="text-start ps-4">
+                                    <div class="fw-bold text-white">{{ bet.match }}</div>
+                                    <div class="small text-secondary">{{ bet.market }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-warning">{{ bet.odd }}</span>
+                                </td>
+                                <td class="fw-bold text-light">{{ bet.stake|currency_brl }}</td>
+                                <td>
+                                    {% if bet.result == 'GREEN' %}
+                                        <span class="result-badge res-green">GREEN</span>
+                                    {% elif bet.result == 'RED' %}
+                                        <span class="result-badge res-red">RED</span>
+                                    {% else %}
+                                        <div class="d-flex justify-content-center gap-2">
+                                            <a href="{% url 'update_bet_result' bet.id %}?result=green" class="action-icon act-check" title="Green">
+                                                <i class="bi bi-check-lg"></i>
+                                            </a>
+                                            <a href="{% url 'update_bet_result' bet.id %}?result=red" class="action-icon act-x" title="Red">
+                                                <i class="bi bi-x-lg"></i>
+                                            </a>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-muted py-5">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>
+                                    Nenhuma aposta recente.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const ctx = document.getElementById('bankChart');
+    if (!ctx) return;
+
+    // Valores vindos da View
+    const valProfit = parseFloat("{{ chart_profit|default:0 }}".replace(',', '.'));
+    const valLoss = parseFloat("{{ chart_loss|default:0 }}".replace(',', '.'));
+    const valBalance = parseFloat("{{ chart_balance|default:0 }}".replace(',', '.'));
+
+    new Chart(ctx, {
+        type: "doughnut", // Mudei para Doughnut para ficar mais elegante no Dashboard
+        data: {
+            labels: ["Lucro Líquido", "Prejuízo Total", "Saldo Atual"],
+            datasets: [{
+                data: [valProfit, valLoss, valBalance],
+                backgroundColor: [
+                    "#00ff91", // Verde Neon
+                    "#ff4b5b", // Vermelho Soft
+                    "#3ea3ff"  // Azul Info
+                ],
+                borderWidth: 0,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%', // Rosca mais fina
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#a1a1aa', usePointStyle: true, padding: 20 }
+                },
+                tooltip: {
+                    backgroundColor: '#000',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    borderColor: '#333',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) { label += ': '; }
+                            if (context.parsed !== null) {
+                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+
+{% endblock %}
