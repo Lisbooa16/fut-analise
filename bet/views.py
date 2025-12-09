@@ -1,28 +1,29 @@
+import calendar
 import json
+import random
 import re
-from datetime import datetime, date
+import time
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from typing import Iterable, List, Optional
 
+from curl_cffi import requests as cureq
+from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models.functions import Cast
+from django.db.models import Count, Q, Sum
 from django.forms import model_to_dict
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib import messages
-from django.db.models import Sum, Q, TextField, Count
-from decimal import Decimal, InvalidOperation
-
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.timezone import now
 
+from bet.models import Bankroll, BankrollHistory, Bet, PossibleBet, Status
 from bet.templatetags.currency_filters import hide_analysis_errors
-from bet.utils import generate_bankroll_alerts, MatchAnalyzer
+from bet.utils import MatchAnalyzer, generate_bankroll_alerts, parse_decimal_input
 from get_events import SofaScore
-from jogos.models import Match, MatchStats, LiveSnapshot, Season, League, RunningToday
-from bet.models import Bet, Bankroll, BankrollHistory, Status, PossibleBet
-from jogos.utils import analyze_match
-from django.shortcuts import render
-from django.db.models import Sum, Count, Q
-from django.utils import timezone
-from datetime import timedelta, date
+from jogos.models import League, LiveSnapshot, Match, MatchStats, RunningToday, Season
+from jogos.utils import analyze_match, save_sofascore_data
 
 
 
@@ -79,93 +80,118 @@ def match_analysis(request):
         "insights": insights_list
     })
 
+@dataclass
+class StatsFilter:
+    xg_min: Optional[float] = None
+    xg_max: Optional[float] = None
+    possession_min: Optional[float] = None
+    possession_max: Optional[float] = None
+    shots_min: Optional[int] = None
+    shots_max: Optional[int] = None
 
-def matches_list(request):
-    # --- GET PARAMETERS ---
-    query = request.GET.get("q", "").strip()
-    season_id = request.GET.get("season")
-    is_live = request.GET.get("live")  # "1" se ativo
-    page_number = request.GET.get("page", 1)
+    @classmethod
+    def from_request(cls, request):
+        def to_float(value):
+            return float(value) if value not in (None, "") else None
 
-    # Advanced Filters
-    xg_min = request.GET.get("xg_min")
-    xg_max = request.GET.get("xg_max")
-    possession_min = request.GET.get("possession_min")
-    possession_max = request.GET.get("possession_max")
-    shots_min = request.GET.get("shots_min")
-    shots_max = request.GET.get("shots_max")
+        def to_int(value):
+            return int(value) if value not in (None, "") else None
 
-    # --- BASE QUERYSET ---
+        return cls(
+            xg_min=to_float(request.GET.get("xg_min")),
+            xg_max=to_float(request.GET.get("xg_max")),
+            possession_min=to_float(request.GET.get("possession_min")),
+            possession_max=to_float(request.GET.get("possession_max")),
+            shots_min=to_int(request.GET.get("shots_min")),
+            shots_max=to_int(request.GET.get("shots_max")),
+        )
+
+    def has_filters(self) -> bool:
+        return any(
+            value is not None
+            for value in (
+                self.xg_min,
+                self.xg_max,
+                self.possession_min,
+                self.possession_max,
+                self.shots_min,
+                self.shots_max,
+            )
+        )
+
+    def matches_stats(self, stats: MatchStats) -> bool:
+        total_xg = (stats.xg_home or 0) + (stats.xg_away or 0)
+        if self.xg_min is not None and total_xg < self.xg_min:
+            return False
+        if self.xg_max is not None and total_xg > self.xg_max:
+            return False
+
+        avg_possession = ((stats.possession_home or 0) + (stats.possession_away or 0)) / 2
+        if self.possession_min is not None and avg_possession < self.possession_min:
+            return False
+        if self.possession_max is not None and avg_possession > self.possession_max:
+            return False
+
+        total_shots = (stats.shots_home or 0) + (stats.shots_away or 0)
+        if self.shots_min is not None and total_shots < self.shots_min:
+            return False
+        if self.shots_max is not None and total_shots > self.shots_max:
+            return False
+
+        return True
+
+
+def get_matches_for_today(query: str, season_id: str, is_live: str):
     today = timezone.localdate()
-    # tomorrow = timezone.localdate() + timedelta(days=1)
     matches = (
         Match.objects
         .select_related("home_team", "away_team", "season", "season__league")
-        .prefetch_related("stats")  # Ou select_related se for OneToOne
+        .prefetch_related("stats")
         .filter(date__date=today, finalizado=False)
         .order_by("-date")
     )
 
-    # --- TEXT SEARCH FILTER ---
     if query:
-        # Busca textual simples em campos chaves
         matches = matches.filter(
-            Q(home_team__name__icontains=query) |
-            Q(away_team__name__icontains=query) |
-            Q(season__league__name__icontains=query)
+            Q(home_team__name__icontains=query)
+            | Q(away_team__name__icontains=query)
+            | Q(season__league__name__icontains=query)
         )
 
-    # --- SEASON FILTER ---
     if season_id:
         matches = matches.filter(season_id=season_id)
 
-    # --- LIVE FILTER (Status) ---
     if is_live == "1":
-        # Assumindo que você tem um campo status ou usa finalizado=False e data presente
-        # Ajuste conforme seu model. Ex: status_type="inprogress"
         matches = matches.filter(finalizado=False)
 
-        # --- STATS FILTERING (IN MEMORY) ---
-    # Verifica se algum filtro numérico foi ativado
-    has_stats_filter = any([xg_min, xg_max, possession_min, possession_max, shots_min, shots_max])
+    return matches
 
-    final_matches = []
 
-    # Se não tem filtros de stats, não precisamos iterar para filtrar
-    if not has_stats_filter:
-        final_matches = matches
-    else:
-        # Se tem filtros, iteramos sobre o queryset (atenção com performance se forem muitos jogos)
-        for m in matches:
-            # Tenta pegar o objeto stats (se for relação OneToOne use m.stats, se for reverse FK use m.stats.first())
-            # Assumindo OneToOneField ou similar acessível via m.stats
-            s = getattr(m, "stats", None)
+def apply_stats_filters(matches: Iterable[Match], stats_filter: StatsFilter) -> List[Match]:
+    if not stats_filter.has_filters():
+        return list(matches)
 
-            if not s: continue  # Jogo sem stats não passa no filtro numérico
+    filtered: List[Match] = []
+    for match in matches:
+        stats = getattr(match, "stats", None)
+        if stats and stats_filter.matches_stats(stats):
+            filtered.append(match)
+    return filtered
 
-            # xG Check
-            total_xg = (s.xg_home or 0) + (s.xg_away or 0)
-            if xg_min and total_xg < float(xg_min): continue
-            if xg_max and total_xg > float(xg_max): continue
 
-            # Possession Check (Média)
-            avg_poss = ((s.possession_home or 0) + (s.possession_away or 0)) / 2
-            if possession_min and avg_poss < float(possession_min): continue
-            if possession_max and avg_poss > float(possession_max): continue
+def matches_list(request):
+    query = request.GET.get("q", "").strip()
+    season_id = request.GET.get("season")
+    is_live = request.GET.get("live")
+    page_number = request.GET.get("page", 1)
 
-            # Shots Check
-            total_shots = (s.shots_home or 0) + (s.shots_away or 0)
-            if shots_min and total_shots < int(shots_min): continue
-            if shots_max and total_shots > int(shots_max): continue
+    stats_filter = StatsFilter.from_request(request)
+    matches = get_matches_for_today(query, season_id, is_live)
+    filtered_matches = apply_stats_filters(matches, stats_filter)
 
-            final_matches.append(m)
-
-    # --- PAGINATION ---
-    paginator = Paginator(final_matches, 12)  # 12 por página (grid 3x4 ou 4x3)
+    paginator = Paginator(filtered_matches, 12)
     page_obj = paginator.get_page(page_number)
 
-    # --- CONTEXT DATA ---
-    # Populate season select
     seasons = (
         Match.objects.filter(season__isnull=False)
         .values_list("season__id", "season__name", "season__league__name")
@@ -173,23 +199,23 @@ def matches_list(request):
         .order_by("season__league__name")
     )
 
-    # Prepare GET params for pagination links
     params = request.GET.copy()
-    if "page" in params: params.pop("page")
+    params.pop("page", None)
 
     context = {
         "matches": page_obj.object_list,
         "page_obj": page_obj,
         "seasons": seasons,
         "params": params,
-
-        # Pass filters back to template to keep inputs filled
         "query": query,
         "season_id": season_id,
         "live": is_live,
-        "xg_min": xg_min, "xg_max": xg_max,
-        "possession_min": possession_min, "possession_max": possession_max,
-        "shots_min": shots_min, "shots_max": shots_max,
+        "xg_min": stats_filter.xg_min,
+        "xg_max": stats_filter.xg_max,
+        "possession_min": stats_filter.possession_min,
+        "possession_max": stats_filter.possession_max,
+        "shots_min": stats_filter.shots_min,
+        "shots_max": stats_filter.shots_max,
     }
 
     return render(request, "betting/matches.html", context)
@@ -197,7 +223,6 @@ def matches_list(request):
 def extract_balanced_json(text, title):
     """
     Encontra o bloco JSON após um título e retorna o JSON completo,
-    usando contador de chaves para evitar truncamento.
     usando contador de chaves para evitar truncamento.
     """
     # Encontra o título
@@ -364,8 +389,6 @@ def match_detail(request, pk):
         "stat_labels": stat_labels,
     })
 
-from decimal import Decimal
-
 def get_recommended_stake_and_odd(bankroll, probability=None):
     """
     Retorna (stake_recomendada, odd_recomendada)
@@ -428,9 +451,8 @@ def place_bet(request, match_id):
         raw_stake = request.POST.get("stake")
 
         try:
-            # Tratamento robusto para vírgula/ponto
-            odd = Decimal(raw_odd.replace(',', '.'))
-            stake = Decimal(raw_stake.replace(',', '.'))
+            odd = parse_decimal_input(raw_odd)
+            stake = parse_decimal_input(raw_stake)
 
             if stake <= 0 or odd <= 1:
                 messages.error(request, "Stake deve ser positiva e Odd maior que 1.")
@@ -450,7 +472,7 @@ def place_bet(request, match_id):
                 messages.success(request, f"✅ Aposta confirmada em {match.home_team} vs {match.away_team}!")
                 return redirect("dashboard")
 
-        except (InvalidOperation, ValueError):
+        except ValueError:
             messages.error(request, "Valores inválidos. Verifique os campos numéricos.")
         except Exception as e:
             messages.error(request, f"Erro ao registrar aposta: {e}")
@@ -481,7 +503,7 @@ def bankroll_view(request):
         amount = request.POST.get("amount")
 
         try:
-            value = Decimal(amount.replace(',', '.'))  # Garante que aceite vírgula ou ponto
+            value = parse_decimal_input(amount)
 
             if value <= 0:
                 messages.error(request, "O valor deve ser maior que zero.")
@@ -502,7 +524,7 @@ def bankroll_view(request):
                     messages.success(request, f"💸 Removido R$ {value} da banca!")
                     return redirect("bankroll_view")
 
-        except (InvalidOperation, ValueError):
+        except ValueError:
             messages.error(request, "Valor inválido. Use apenas números.")
         except Exception as e:
             messages.error(request, f"Erro ao processar: {str(e)}")
@@ -756,18 +778,6 @@ def update_bet_result(request, bet_id):
         messages.error(request, "Resultado inválido.")
 
     return redirect("bankroll_view")
-
-
-import calendar
-import json
-import time
-import random
-
-from django.http import JsonResponse
-from curl_cffi import requests as cureq
-
-from bet.models import PossibleBet
-from jogos.utils import save_sofascore_data
 
 
 BASE = "https://www.sofascore.com/api/v1"

@@ -1,4 +1,6 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+
+from typing import Optional
 
 from bet.models import Bet
 from django.db import models
@@ -68,6 +70,24 @@ def generate_bankroll_alerts(bankroll):
             )
 
     return alerts
+
+
+def parse_decimal_input(raw_value: Optional[str]) -> Decimal:
+    """Parseia valores numéricos vindos de formulários.
+
+    Aceita vírgulas ou pontos como separador decimal e levanta ``ValueError``
+    quando o valor for vazio ou inválido. Mantemos a responsabilidade de
+    tratar o erro no chamador para permitir mensagens específicas.
+    """
+
+    if raw_value is None:
+        raise ValueError("Valor ausente")
+
+    try:
+        cleaned_value = raw_value.replace(",", ".").strip()
+        return Decimal(cleaned_value)
+    except (InvalidOperation, AttributeError) as exc:
+        raise ValueError("Valor inválido") from exc
 
 
 class SofaStatParser:
