@@ -1,4 +1,6 @@
-from django.db import models
+from decimal import Decimal
+
+from django.db import models, transaction
 
 from jogos.models import Match
 
@@ -16,16 +18,40 @@ class Bankroll(models.Model):
     def __str__(self):
         return f"{self.name} - R$ {self.balance}"
 
-    def deposit(self, amount):
-        self.balance += amount
-        self.save(update_fields=["balance"])
+    def _apply_movement(self, amount: Decimal, status: int, note: str | None = None):
+        amount = Decimal(amount)
+        if amount <= 0:
+            raise ValueError("Movimentações precisam ser maiores que zero.")
 
-    def withdraw(self, amount):
-        if self.balance >= amount:
-            self.balance -= amount
-            self.save(update_fields=["balance"])
-        else:
-            raise ValueError("Saldo insuficiente na banca!")
+        if self.pk is None:
+            raise ValueError("A banca precisa ser salva antes de registrar movimentações.")
+
+        with transaction.atomic():
+            bankroll = Bankroll.objects.select_for_update().get(pk=self.pk)
+
+            if status == Status.DECREASE and bankroll.balance < amount:
+                raise ValueError("Saldo insuficiente na banca!")
+
+            updated_balance = (
+                bankroll.balance + amount if status == Status.INCREASE else bankroll.balance - amount
+            )
+            bankroll.balance = updated_balance
+            bankroll.save(update_fields=["balance"])
+
+            BankrollHistory.objects.create(
+                bankroll=bankroll,
+                status=status,
+                amount=amount,
+                note=note,
+            )
+
+        self.balance = updated_balance
+
+    def deposit(self, amount, note: str | None = None):
+        self._apply_movement(amount, Status.INCREASE, note)
+
+    def withdraw(self, amount, note: str | None = None):
+        self._apply_movement(amount, Status.DECREASE, note)
 
 class BankrollHistory(models.Model):
 
@@ -81,14 +107,20 @@ class Bet(models.Model):
     def register_bet(self):
         """Registra aposta e debita da banca."""
         self.potential_profit = self.calculate_profit()
-        self.bankroll.withdraw(self.stake)
+        self.bankroll.withdraw(self.stake, note=f"Aposta em {self.match} ({self.market})")
         self.save()
 
     def settle_bet(self, is_green: bool):
         """Atualiza o resultado e ajusta saldo da banca."""
+        if self.result != 'PENDING':
+            raise ValueError("A aposta já foi liquidada.")
+
         if is_green:
             self.result = 'GREEN'
-            self.bankroll.deposit(self.potential_profit)
+            self.bankroll.deposit(
+                self.potential_profit or self.calculate_profit(),
+                note=f"Green: {self.match} ({self.market})",
+            )
         else:
             self.result = 'RED'
         self.save(update_fields=["result"])
