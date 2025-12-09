@@ -1,12 +1,12 @@
 import calendar
+import json
 import time
 
+import requests
 from django.core.management.base import BaseCommand
 
 from bet.models import PossibleBet
 from jogos.utils import save_sofascore_data
-import requests
-import json
 
 BASE = "https://www.sofascore.com/api/v1"
 headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -20,43 +20,43 @@ class Command(BaseCommand):
 
         BASE = "https://www.sofascore.com/api/v1"
         cookies = {
-            '_gcl_au': '1.1.1410777148.1764702710',
-            '_ga': 'GA1.1.838785703.1764702710',
-            'g_state': '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
-            '_fbp': 'fb.1.1764703877532.613688672911968169',
-            '_ga_47RNFYWRSH': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-            '_ga_L47NC0LK6B': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-            '_cc_id': '75f94bbc4fb7420f2cf0732add121ee8',
-            'panoramaId_expiry': '1765227822427',
-            'panoramaId': 'f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d',
-            '_li_dcdm_c': '.sofascore.com',
-            '__gads': 'ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A',
-            '__gpi': 'UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg',
-            '__eoi': 'ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU',
-            'cto_bundle': '8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q',
-            'cto_bidid': 'y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE',
-            'FCCDCF': '%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D',
-            'FCNEC': '%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D',
-            '_ga_HNQ9P9MGZR': 'GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
+            "_gcl_au": "1.1.1410777148.1764702710",
+            "_ga": "GA1.1.838785703.1764702710",
+            "g_state": '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
+            "_fbp": "fb.1.1764703877532.613688672911968169",
+            "_ga_47RNFYWRSH": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+            "_ga_L47NC0LK6B": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+            "_cc_id": "75f94bbc4fb7420f2cf0732add121ee8",
+            "panoramaId_expiry": "1765227822427",
+            "panoramaId": "f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d",
+            "_li_dcdm_c": ".sofascore.com",
+            "__gads": "ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A",
+            "__gpi": "UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg",
+            "__eoi": "ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU",
+            "cto_bundle": "8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q",
+            "cto_bidid": "y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE",
+            "FCCDCF": "%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D",
+            "FCNEC": "%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D",
+            "_ga_HNQ9P9MGZR": "GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0",
         }
 
         headers = {
-            'accept': '*/*',
-            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'baggage': 'sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84',
-            'cache-control': 'max-age=0',
-            'priority': 'u=1, i',
-            'referer': 'https://www.sofascore.com/pt/',
-            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'sentry-trace': 'dbc7b2174ca14e084df635b543355a84-870d2e1df1444643',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-            'x-captcha': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg',
-            'x-requested-with': 'f690cc',
+            "accept": "*/*",
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "baggage": "sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84",
+            "cache-control": "max-age=0",
+            "priority": "u=1, i",
+            "referer": "https://www.sofascore.com/pt/",
+            "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "sentry-trace": "dbc7b2174ca14e084df635b543355a84-870d2e1df1444643",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "x-captcha": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg",
+            "x-requested-with": "f690cc",
             # 'cookie': '_gcl_au=1.1.1410777148.1764702710; _ga=GA1.1.838785703.1764702710; g_state={"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}; _fbp=fb.1.1764703877532.613688672911968169; _ga_47RNFYWRSH=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _ga_L47NC0LK6B=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _cc_id=75f94bbc4fb7420f2cf0732add121ee8; panoramaId_expiry=1765227822427; panoramaId=f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d; _li_dcdm_c=.sofascore.com; __gads=ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A; __gpi=UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg; __eoi=ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU; cto_bundle=8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q; cto_bidid=y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE; FCCDCF=%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D; FCNEC=%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D; _ga_HNQ9P9MGZR=GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
         }
 
@@ -350,7 +350,9 @@ class Command(BaseCommand):
                 for group in period.get("groups", []):
                     for item in group.get("statisticsItems", []):
                         if item.get("key") == key:
-                            return float(item.get("homeValue", 0)), float(item.get("awayValue", 0))
+                            return float(item.get("homeValue", 0)), float(
+                                item.get("awayValue", 0)
+                            )
             return 0.0, 0.0
 
         # =====================================================
@@ -402,7 +404,7 @@ class Command(BaseCommand):
                     "xg": {"home": xg_home, "away": xg_away},
                     "shots": {"home": shots_home, "away": shots_away},
                     "shots_on": {"home": shots_on_home, "away": shots_on_away},
-                    "posse": {"home": possession_home, "away": possession_away}
+                    "posse": {"home": possession_home, "away": possession_away},
                 },
                 "insights": insights,
             }
@@ -414,7 +416,9 @@ class Command(BaseCommand):
             if not stats or "statistics" not in stats or not stats["statistics"]:
                 return []
 
-            ALL = next((p for p in stats["statistics"] if p.get("period") == "ALL"), None)
+            ALL = next(
+                (p for p in stats["statistics"] if p.get("period") == "ALL"), None
+            )
             if not ALL:
                 return []
 
@@ -422,7 +426,9 @@ class Command(BaseCommand):
                 for g in ALL.get("groups", []):
                     for it in g.get("statisticsItems", []):
                         if it.get("key") == key:
-                            return float(it.get("homeValue", 0)), float(it.get("awayValue", 0))
+                            return float(it.get("homeValue", 0)), float(
+                                it.get("awayValue", 0)
+                            )
                 return default
 
             insights = []
@@ -510,22 +516,30 @@ class Command(BaseCommand):
                 if ratio >= 0.75:
                     return f"{team.capitalize()} tem forte tendência: {name} ({pct}%)."
                 elif ratio >= 0.60:
-                    return f"{team.capitalize()} tem tendência moderada: {name} ({pct}%)."
+                    return (
+                        f"{team.capitalize()} tem tendência moderada: {name} ({pct}%)."
+                    )
                 return f"Tendência fraca para {name} ({pct}%)."
 
             for group in ["general", "head2head"]:
                 for item in streaks.get(group, []):
                     r = parse_value(item.get("value", "0"))
 
-                    analyzed[group].append({
-                        "name": item.get("name"),
-                        "team": item.get("team"),
-                        "value": item.get("value"),
-                        "ratio": r,
-                        "hot": r is not None and r >= 0.60,
-                        "intensity": classify(r),
-                        "insight": insight_text(item.get("name"), r, item.get("team")) if r else None
-                    })
+                    analyzed[group].append(
+                        {
+                            "name": item.get("name"),
+                            "team": item.get("team"),
+                            "value": item.get("value"),
+                            "ratio": r,
+                            "hot": r is not None and r >= 0.60,
+                            "intensity": classify(r),
+                            "insight": (
+                                insight_text(item.get("name"), r, item.get("team"))
+                                if r
+                                else None
+                            ),
+                        }
+                    )
 
             return analyzed
 
@@ -535,13 +549,17 @@ class Command(BaseCommand):
         def get_standings(event):
             """Pega standings da temporada e descobre quem é o favorito."""
 
-            tournament_id = event.get("tournament", {}).get("uniqueTournament", {}).get("id")
+            tournament_id = (
+                event.get("tournament", {}).get("uniqueTournament", {}).get("id")
+            )
             season_id = event.get("season", {}).get("id")
 
             if not tournament_id or not season_id:
                 return None, None, None
 
-            url = f"{BASE}/tournament/{tournament_id}/season/{season_id}/standings/total"
+            url = (
+                f"{BASE}/tournament/{tournament_id}/season/{season_id}/standings/total"
+            )
             standings_json = get_json(url)
 
             rows = standings_json.get("standings", [{}])[0].get("rows", [])
@@ -558,7 +576,8 @@ class Command(BaseCommand):
             favorito = None
             if pos_home and pos_away:
                 favorito = (
-                    event["homeTeam"]["name"] if pos_home < pos_away
+                    event["homeTeam"]["name"]
+                    if pos_home < pos_away
                     else event["awayTeam"]["name"]
                 )
 
@@ -579,7 +598,8 @@ class Command(BaseCommand):
                             "goals_against": row["scoresAgainst"],
                             "goal_diff": row["scoreDiffFormatted"],
                             "is_top": row["position"] <= 4,
-                            "is_relegation": row.get("promotion", {}).get("text") == "Relegation"
+                            "is_relegation": row.get("promotion", {}).get("text")
+                            == "Relegation",
                         }
 
                 return None
@@ -618,7 +638,9 @@ class Command(BaseCommand):
                 h2h = streaks.get("head2head", [])
 
                 # Conta HOT STRONG (tendências muito fortes)
-                strong_count = sum(1 for it in general + h2h if it["intensity"] == "strong")
+                strong_count = sum(
+                    1 for it in general + h2h if it["intensity"] == "strong"
+                )
 
                 # Define "clareza" da leitura
                 prob_home = probs.get("home", 50)
@@ -642,23 +664,21 @@ class Command(BaseCommand):
                     equilibrio_bonus = 0
 
                 # score final
-                score = (
-                        strong_count * 12 +
-                        extremidade * 2 +
-                        equilibrio_bonus
-                )
+                score = strong_count * 12 + extremidade * 2 + equilibrio_bonus
 
-                ranked.append({
-                    "score": score,
-                    "eventId": r["eventId"],
-                    "slug": r["slug"],
-                    "home": r["homeTeam"],
-                    "away": r["awayTeam"],
-                    "tournament": r["tournament"],
-                    "insights": r["insights"],
-                    "previsao": r["previsao_automatica"],
-                    "streaks": r["streaks"],
-                })
+                ranked.append(
+                    {
+                        "score": score,
+                        "eventId": r["eventId"],
+                        "slug": r["slug"],
+                        "home": r["homeTeam"],
+                        "away": r["awayTeam"],
+                        "tournament": r["tournament"],
+                        "insights": r["insights"],
+                        "previsao": r["previsao_automatica"],
+                        "streaks": r["streaks"],
+                    }
+                )
 
             # ordena
             ranked = sorted(ranked, key=lambda x: x["score"], reverse=True)
@@ -675,34 +695,47 @@ class Command(BaseCommand):
         #     f"{year}-{month:02d}-{day:02d}"
         #     for day in range(1, num_days + 1)
         # ]
-        date = [
-            '2025-12-09'
-        ]
+        date = ["2025-12-09"]
 
         for c in date:
             url = f"{BASE}/sport/football/scheduled-events/{c}"
             data = get_json(url)
             time.sleep(4.5)
 
-            allowed_leagues = { "coppa-italia"}
+            allowed_leagues = {"coppa-italia"}
             allowed_countries = {"italy"}
 
             allowed_leagues = {
-                "premier-league", "laliga", "serie-a",
-                "conmebol-libertadores", "brasileirao-serie-a",
-                "ligue-1", "bundesliga", "trendyol-super-lig",
-                "coppa-italia", "copa-del-rey"
+                "premier-league",
+                "laliga",
+                "serie-a",
+                "conmebol-libertadores",
+                "brasileirao-serie-a",
+                "ligue-1",
+                "bundesliga",
+                "trendyol-super-lig",
+                "coppa-italia",
+                "copa-del-rey",
             }
 
             allowed_countries = {
-                "england", "spain", "italy", "south-america",
-                "brazil", "france", "germany", "turkey","italy", "spain"
+                "england",
+                "spain",
+                "italy",
+                "south-america",
+                "brazil",
+                "france",
+                "germany",
+                "turkey",
+                "italy",
+                "spain",
             }
             try:
                 events = [
-                    e for e in data["events"]
+                    e
+                    for e in data["events"]
                     if e["tournament"]["slug"] in allowed_leagues
-                       and e["tournament"]["category"]["slug"] in allowed_countries
+                    and e["tournament"]["category"]["slug"] in allowed_countries
                 ]
                 final = []
 
@@ -738,13 +771,10 @@ class Command(BaseCommand):
                     result["standings"] = {
                         "home": home_standing,
                         "away": away_standing,
-                        "favorito_tabela": table_favorite(home_standing, away_standing)
+                        "favorito_tabela": table_favorite(home_standing, away_standing),
                     }
                     prediction = generate_auto_prediction(
-                        event,
-                        stats,
-                        streaks_analysis,
-                        result["standings"]
+                        event, stats, streaks_analysis, result["standings"]
                     )
 
                     result["previsao_automatica"] = prediction
@@ -764,7 +794,7 @@ class Command(BaseCommand):
                             event_id=event["id"],
                             market=markets["principal"],
                             probability=max(probs.values()),  # melhor probabilidade
-                            description="Mercado principal sugerido pelo modelo"
+                            description="Mercado principal sugerido pelo modelo",
                         )
 
                     # 2) Mercado de gols
@@ -773,7 +803,7 @@ class Command(BaseCommand):
                             event_id=event["id"],
                             market=markets["gols"],
                             probability=probs.get("over") or 50,
-                            description="Leitura de gols com base no comportamento do jogo"
+                            description="Leitura de gols com base no comportamento do jogo",
                         )
 
                     final.append(result)
@@ -786,8 +816,8 @@ class Command(BaseCommand):
                         result["standings"],
                         result["previsao_automatica"],
                         json.dumps(event, ensure_ascii=False),  # ✔ raw_event_json
-                        json.dumps(stats, ensure_ascii=False)
+                        json.dumps(stats, ensure_ascii=False),
                     )
             except Exception as e:
-                print(f'erro: {e}')
+                print(f"erro: {e}")
                 pass

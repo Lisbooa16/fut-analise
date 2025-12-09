@@ -14,11 +14,11 @@ def replace(value, arg):
 
     if isinstance(arg, str):
         try:
-                                         
+
             old, new = arg.split("|")
         except ValueError:
-                                                                                
-            return value.replace(arg, '')
+
+            return value.replace(arg, "")
 
         return value.replace(old, new)
     return value

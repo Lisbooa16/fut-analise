@@ -19,8 +19,12 @@ class BankrollTestCase(TestCase):
 
         self.assertEqual(self.bankroll.balance, Decimal("115"))
         self.assertEqual(self.bankroll.history.count(), 2)
-        self.assertIn(Status.INCREASE, self.bankroll.history.values_list("status", flat=True))
-        self.assertIn(Status.DECREASE, self.bankroll.history.values_list("status", flat=True))
+        self.assertIn(
+            Status.INCREASE, self.bankroll.history.values_list("status", flat=True)
+        )
+        self.assertIn(
+            Status.DECREASE, self.bankroll.history.values_list("status", flat=True)
+        )
 
     def test_withdraw_prevents_negative_balance(self):
         with self.assertRaises(ValueError):
@@ -31,7 +35,9 @@ class BetSettlementTestCase(TestCase):
     def setUp(self):
         self.bankroll = Bankroll.objects.create(name="Teste", balance=Decimal("50"))
         league = League.objects.create(country="BR", name="Serie Teste")
-        season = Season.objects.create(league=league, name="Temporada Teste", external_id=1)
+        season = Season.objects.create(
+            league=league, name="Temporada Teste", external_id=1
+        )
         home = Team.objects.create(league=league, name="Time A", external_id=1)
         away = Team.objects.create(league=league, name="Time B", external_id=2)
 

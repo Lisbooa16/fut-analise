@@ -2,8 +2,8 @@ import calendar
 import json
 import random
 import re
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -59,23 +59,30 @@ class MatchStatFilters:
         )
 
     def is_empty(self):
-        return not any([
-            self.xg_min,
-            self.xg_max,
-            self.possession_min,
-            self.possession_max,
-            self.shots_min,
-            self.shots_max,
-        ])
+        return not any(
+            [
+                self.xg_min,
+                self.xg_max,
+                self.possession_min,
+                self.possession_max,
+                self.shots_min,
+                self.shots_max,
+            ]
+        )
 
     def match_stats(self, stats):
         """Retorna True se o objeto de estatísticas cumpre os filtros definidos."""
 
         def total(field_home, field_away):
-            return (getattr(stats, field_home, 0) or 0) + (getattr(stats, field_away, 0) or 0)
+            return (getattr(stats, field_home, 0) or 0) + (
+                getattr(stats, field_away, 0) or 0
+            )
 
         def average(field_home, field_away):
-            return ((getattr(stats, field_home, 0) or 0) + (getattr(stats, field_away, 0) or 0)) / 2
+            return (
+                (getattr(stats, field_home, 0) or 0)
+                + (getattr(stats, field_away, 0) or 0)
+            ) / 2
 
         total_xg = total("xg_home", "xg_away")
         if self.xg_min is not None and total_xg < self.xg_min:
@@ -116,37 +123,34 @@ def filter_matches_by_stats(matches, stat_filters):
     return filtered
 
 
-
 def create_bet_from_model(request, pb_id):
     pb = get_object_or_404(PossibleBet, id=pb_id)
     bankroll = Bankroll.objects.first()
 
-                                                
     try:
         match = Match.objects.get(external_id=pb.event_id)
     except Match.DoesNotExist:
         messages.error(request, "Não foi possível encontrar o jogo desta aposta.")
         return redirect("dashboard")
 
-                           
-    stake = Decimal("10.00")                                              
-    odd = Decimal("1.50")                                                              
+    stake = Decimal("10.00")
+    odd = Decimal("1.50")
 
     bet = Bet.objects.create(
         bankroll=bankroll,
-        match=match,                                         
+        match=match,
         market=pb.market,
         odd=odd,
         stake=stake,
-        potential_profit=stake * odd
+        potential_profit=stake * odd,
     )
 
-                                             
     bankroll.withdraw(stake, note=f"Aposta gerada a partir do modelo: {pb.market}")
     bankroll.save(update_fields=["balance"])
 
     messages.success(request, f"Aposta criada: {pb.market}")
     return redirect("match_detail", pk=match.id)
+
 
 def match_analysis(request):
     matches = Match.objects.filter(finalizado=False)
@@ -155,70 +159,68 @@ def match_analysis(request):
 
     for match in matches:
         try:
-            event_json = json.loads(match.raw_event_json) if match.raw_event_json else {}
-            stats_json = json.loads(match.raw_statistics_json) if match.raw_statistics_json else {}
+            event_json = (
+                json.loads(match.raw_event_json) if match.raw_event_json else {}
+            )
+            stats_json = (
+                json.loads(match.raw_statistics_json)
+                if match.raw_statistics_json
+                else {}
+            )
 
             analysis = analyze_match(event_json, stats_json)
-            insights_list.append({
-                "match": match,
-                "analysis": analysis,
-            })
+            insights_list.append(
+                {
+                    "match": match,
+                    "analysis": analysis,
+                }
+            )
         except Exception as e:
             print(f"Erro analisando match {match.id}: {e}")
 
-    return render(request, "betting/analysis.html", {
-        "insights": insights_list
-    })
+    return render(request, "betting/analysis.html", {"insights": insights_list})
 
 
 def matches_list(request):
-                            
+
     query = request.GET.get("q", "").strip()
     season_id = request.GET.get("season")
-    is_live = request.GET.get("live")                
+    is_live = request.GET.get("live")
     page_number = request.GET.get("page", 1)
 
     stat_filters = MatchStatFilters.from_request(request)
 
-                           
     today = timezone.localdate()
-                                                         
+
     matches = (
-        Match.objects
-        .select_related("home_team", "away_team", "season", "season__league")
-        .prefetch_related("stats")                                     
+        Match.objects.select_related(
+            "home_team", "away_team", "season", "season__league"
+        )
+        .prefetch_related("stats")
         .filter(date__date=today, finalizado=False)
         .order_by("-date")
     )
 
-                                
     if query:
-                                                
+
         matches = matches.filter(
-            Q(home_team__name__icontains=query) |
-            Q(away_team__name__icontains=query) |
-            Q(season__league__name__icontains=query)
+            Q(home_team__name__icontains=query)
+            | Q(away_team__name__icontains=query)
+            | Q(season__league__name__icontains=query)
         )
 
-                           
     if season_id:
         matches = matches.filter(season_id=season_id)
 
-                                  
     if is_live == "1":
-                                                                                        
-                                                                 
+
         matches = matches.filter(finalizado=False)
 
-                                             
     final_matches = filter_matches_by_stats(matches, stat_filters)
 
-                        
-    paginator = Paginator(final_matches, 12)                                   
+    paginator = Paginator(final_matches, 12)
     page_obj = paginator.get_page(page_number)
 
-                          
-                            
     seasons = (
         Match.objects.filter(season__isnull=False)
         .values_list("season__id", "season__name", "season__league__name")
@@ -226,46 +228,45 @@ def matches_list(request):
         .order_by("season__league__name")
     )
 
-                                             
     params = request.GET.copy()
-    if "page" in params: params.pop("page")
+    if "page" in params:
+        params.pop("page")
 
     context = {
         "matches": page_obj.object_list,
         "page_obj": page_obj,
         "seasons": seasons,
         "params": params,
-
-                                                             
         "query": query,
         "season_id": season_id,
         "live": is_live,
-        "xg_min": stat_filters.xg_min, "xg_max": stat_filters.xg_max,
-        "possession_min": stat_filters.possession_min, "possession_max": stat_filters.possession_max,
-        "shots_min": stat_filters.shots_min, "shots_max": stat_filters.shots_max,
+        "xg_min": stat_filters.xg_min,
+        "xg_max": stat_filters.xg_max,
+        "possession_min": stat_filters.possession_min,
+        "possession_max": stat_filters.possession_max,
+        "shots_min": stat_filters.shots_min,
+        "shots_max": stat_filters.shots_max,
     }
 
     return render(request, "betting/matches.html", context)
+
 
 def extract_balanced_json(text, title):
     """
     Encontra o bloco JSON após um título e retorna o JSON completo,
     usando contador de chaves para evitar truncamento.
     """
-                       
+
     m = re.search(re.escape(title), text)
     if not m:
         return None
 
-                          
     start_idx = m.end()
 
-                             
     brace_start = text.find("{", start_idx)
     if brace_start == -1:
         return None
 
-                                  
     depth = 0
     i = brace_start
     while i < len(text):
@@ -274,8 +275,8 @@ def extract_balanced_json(text, title):
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                               
-                block = text[brace_start:i+1]
+
+                block = text[brace_start : i + 1]
                 try:
                     return json.loads(block)
                 except Exception as e:
@@ -291,7 +292,6 @@ def parse_summary(raw):
     if not raw:
         return {}
 
-                      
     insights = []
     ins = re.search(r"📌 INSIGHTS(.*?)(📌|$)", raw, flags=re.S)
     if ins:
@@ -300,13 +300,10 @@ def parse_summary(raw):
             if line.startswith("-"):
                 insights.append(line.lstrip("- ").strip())
 
-                                 
     forecast = extract_balanced_json(raw, "📌 PREVISÃO AUTOMÁTICA") or {}
 
-                     
     streaks = extract_balanced_json(raw, "📌 STREAKS") or {}
 
-                       
     standings = extract_balanced_json(raw, "📌 STANDINGS") or {}
 
     return {
@@ -318,103 +315,86 @@ def parse_summary(raw):
 
 
 def match_detail(request, pk):
-                               
 
     match = get_object_or_404(
-        Match.objects.select_related("home_team", "away_team", "season"),
-        pk=pk
+        Match.objects.select_related("home_team", "away_team", "season"), pk=pk
     )
 
-                            
     analyzer = MatchAnalyzer(match)
 
     if match.stats_json and match.event_json:
         live_analysis = analyzer.analyze_json_data(match.stats_json, match.event_json)
     else:
-                                                      
+
         live_analysis = {"insights": [], "pressure_index": {"home": 50, "away": 50}}
 
-                                 
     stats = MatchStats.objects.filter(match=match).first()
     summary = parse_summary(stats.summary) if stats and stats.summary else {}
 
-                                                
     streak_data = summary.get("streaks", {})
     streak_analysis = analyzer.analyze_streaks(streak_data)
 
-                                             
-    base_analysis = SofaScore().get_analise_event(match)                        
+    base_analysis = SofaScore().get_analise_event(match)
 
-                                                              
-                                                                          
     impact = streak_analysis.get("impact", {})
 
     if base_analysis and "probabilities" in base_analysis:
         probs = base_analysis["probabilities"]
 
-                                        
-        probs["over_2_5"] = min(95, probs.get("over_2_5", 50) + impact.get("over_goals", 0) * 5)
+        probs["over_2_5"] = min(
+            95, probs.get("over_2_5", 50) + impact.get("over_goals", 0) * 5
+        )
         probs["btts"] = min(95, probs.get("btts", 50) + impact.get("btts", 0) * 5)
 
-                                          
-                                                                                           
         momentum_factor = impact.get("momentum", 0) * 3
         probs["home"] = min(90, max(10, probs.get("home", 33) + momentum_factor))
 
-                        
-        def to_odd(p): return round(100 / p, 2) if p > 1 else 1.01
+        def to_odd(p):
+            return round(100 / p, 2) if p > 1 else 1.01
 
         base_analysis["odds"] = {k: to_odd(v) for k, v in probs.items()}
 
-                                         
-                                                 
-                                                                                       
     current_home = match.home_team_score if match.home_team_score is not None else 0
     current_away = match.away_team_score if match.away_team_score is not None else 0
 
-                                                                  
-                                                      
-                            
-                                          
-                                          
-                   
-       
-
-                
     possible_bets = PossibleBet.objects.filter(event_id=match.external_id)
 
-                     
     stat_labels = [
-            ('possession', 'Posse de Bola (%)'),
-            ('expectedGoals', 'xG (Gols Esperados)'),                                          
-            ('totalShotsOnGoal', 'Finalizações'),
-            ('cornerKicks', 'Escanteios'),
-            ('bigChanceCreated', 'Grandes Chances'),
-            ('finalThirdEntries', 'Entradas no Terço Final'),                   
-            ('touchesInOppBox', 'Toques na Área Rival'),                       
-            ('fouls', 'Faltas'),
-            ('yellowCards', 'Cartões Amarelos'),
-            ("xg", "Expected Goals"),
-            ("shots_on", "Chutes no Gol"),
-            ("shots_total", "Finalizações"),
-            ("corners", "Escanteios"),
-            ("touches_box", "Toques na Área"),
-            ("final_third_entries", "Entradas no Terço Final"),
-            ("big_chances", "Grandes Chances"),
-            ("shots_inside_box", "Chutes na Área"),
-            ("recoveries", "Recuperações"),
+        ("possession", "Posse de Bola (%)"),
+        ("expectedGoals", "xG (Gols Esperados)"),
+        ("totalShotsOnGoal", "Finalizações"),
+        ("cornerKicks", "Escanteios"),
+        ("bigChanceCreated", "Grandes Chances"),
+        ("finalThirdEntries", "Entradas no Terço Final"),
+        ("touchesInOppBox", "Toques na Área Rival"),
+        ("fouls", "Faltas"),
+        ("yellowCards", "Cartões Amarelos"),
+        ("xg", "Expected Goals"),
+        ("shots_on", "Chutes no Gol"),
+        ("shots_total", "Finalizações"),
+        ("corners", "Escanteios"),
+        ("touches_box", "Toques na Área"),
+        ("final_third_entries", "Entradas no Terço Final"),
+        ("big_chances", "Grandes Chances"),
+        ("shots_inside_box", "Chutes na Área"),
+        ("recoveries", "Recuperações"),
     ]
 
-    return render(request, "betting/match_detail.html", {
-        "match": match,
-        "stats": stats,
-        "summary": summary,
-        "analysis": base_analysis,                            
-        "streak_analysis": streak_analysis,                    
-        "live_analysis": live_analysis,                          
-        "possible_bets": possible_bets,
-        "stat_labels": stat_labels,
-    })
+    return render(
+        request,
+        "betting/match_detail.html",
+        {
+            "match": match,
+            "stats": stats,
+            "summary": summary,
+            "analysis": base_analysis,
+            "streak_analysis": streak_analysis,
+            "live_analysis": live_analysis,
+            "possible_bets": possible_bets,
+            "stat_labels": stat_labels,
+        },
+    )
+
 
 def get_recommended_stake_and_odd(bankroll, probability=None):
     """
@@ -422,54 +402,45 @@ def get_recommended_stake_and_odd(bankroll, probability=None):
     probability = probabilidade em % (ex: 67.7)
     """
 
-                       
     if probability is None:
-        percent = Decimal("0.01")              
+        percent = Decimal("0.01")
     elif probability >= 70:
-        percent = Decimal("0.02")      
+        percent = Decimal("0.02")
     elif probability >= 55:
-        percent = Decimal("0.015")        
+        percent = Decimal("0.015")
     else:
-        percent = Decimal("0.01")      
+        percent = Decimal("0.01")
 
     stake = bankroll.balance * percent
 
-                     
     if probability:
         prob_decimal = Decimal(probability) / Decimal("100")
         odd_fair = Decimal("1") / prob_decimal
         odd_recommended = odd_fair.quantize(Decimal("0.01"))
     else:
-        odd_recommended = Decimal("1.50")                 
+        odd_recommended = Decimal("1.50")
 
     return (stake.quantize(Decimal("0.01")), odd_recommended)
 
 
 def place_bet(request, match_id):
     match = get_object_or_404(Match, id=match_id)
-    bankroll, _ = Bankroll.objects.get_or_create(name="Banca Principal")            
+    bankroll, _ = Bankroll.objects.get_or_create(name="Banca Principal")
     alerts = generate_bankroll_alerts(bankroll)
 
-                                                    
     probability = None
-                                                                          
-    if hasattr(match, 'analysis'):
-                                                                    
-                                                                           
-                                                      
 
-                                                                
+    if hasattr(match, "analysis"):
+
         try:
-                                                                                        
-            probs = getattr(match.analysis, 'probabilities', {})
-            probability = probs.get("over_2_5")           
+
+            probs = getattr(match.analysis, "probabilities", {})
+            probability = probs.get("over_2_5")
         except:
             pass
 
-                              
     recommended_stake, recommended_odd = get_recommended_stake_and_odd(
-        bankroll,
-        probability
+        bankroll, probability
     )
 
     if request.method == "POST":
@@ -478,14 +449,16 @@ def place_bet(request, match_id):
         raw_stake = request.POST.get("stake")
 
         try:
-                                                   
-            odd = Decimal(raw_odd.replace(',', '.'))
-            stake = Decimal(raw_stake.replace(',', '.'))
+
+            odd = Decimal(raw_odd.replace(",", "."))
+            stake = Decimal(raw_stake.replace(",", "."))
 
             if stake <= 0 or odd <= 1:
                 messages.error(request, "Stake deve ser positiva e Odd maior que 1.")
             elif bankroll.balance < stake:
-                messages.error(request, f"Saldo insuficiente. Você tem R$ {bankroll.balance}.")
+                messages.error(
+                    request, f"Saldo insuficiente. Você tem R$ {bankroll.balance}."
+                )
             else:
                 bet = Bet.objects.create(
                     bankroll=bankroll,
@@ -494,10 +467,13 @@ def place_bet(request, match_id):
                     odd=odd,
                     stake=stake,
                 )
-                                                                        
+
                 bet.register_bet()
 
-                messages.success(request, f"✅ Aposta confirmada em {match.home_team} vs {match.away_team}!")
+                messages.success(
+                    request,
+                    f"✅ Aposta confirmada em {match.home_team} vs {match.away_team}!",
+                )
                 return redirect("dashboard")
 
         except (InvalidOperation, ValueError):
@@ -515,7 +491,7 @@ def place_bet(request, match_id):
             "recommended_odd": recommended_odd,
             "probability": probability,
             "alerts": alerts,
-        }
+        },
     )
 
 
@@ -527,7 +503,9 @@ def _parse_decimal(value: str | None) -> Decimal:
 
 def _bankroll_totals(bets):
     return (
-        bets.filter(result="GREEN").aggregate(Sum("potential_profit"))["potential_profit__sum"]
+        bets.filter(result="GREEN").aggregate(Sum("potential_profit"))[
+            "potential_profit__sum"
+        ]
         or Decimal("0")
     ), (bets.filter(result="RED").aggregate(Sum("stake"))["stake__sum"] or Decimal("0"))
 
@@ -548,7 +526,7 @@ def bankroll_view(request):
 
             if value <= 0:
                 messages.error(request, "O valor deve ser maior que zero.")
-            elif action in {"increase", "increese"}:                                              
+            elif action in {"increase", "increese"}:
                 bankroll.deposit(value, note="Depósito manual")
                 messages.success(request, f"💰 Adicionado R$ {value} à banca!")
                 return redirect("bankroll_view")
@@ -561,7 +539,7 @@ def bankroll_view(request):
 
         except (InvalidOperation, ValueError) as exc:
             messages.error(request, f"Valor inválido. {exc}")
-        except Exception as exc:                                            
+        except Exception as exc:
             messages.error(request, f"Erro ao processar: {exc}")
 
     bets = bankroll.bets.all().order_by("-created_at")
@@ -582,66 +560,62 @@ def bankroll_view(request):
 def dashboard(request):
     """Visão geral: banca + métricas reais."""
 
-                                            
     today = date.today().isoformat()
     if not RunningToday.objects.filter(data=today, rodou=True).exists():
-                                                                                      
+
         try:
             SofaScore([today]).get_events()
             RunningToday.objects.update_or_create(data=today, defaults={"rodou": True})
         except Exception as e:
             print(f"Erro ao rodar scraper: {e}")
 
-                       
     bankroll, _ = Bankroll.objects.get_or_create(name="Banca Principal")
 
-                                                            
-                                                                 
     all_bets = Bet.objects.all()
 
     metrics = all_bets.aggregate(
-        total_stake_green=Sum('stake', filter=Q(result='GREEN')),
-        total_return_green=Sum('potential_profit', filter=Q(result='GREEN')),
-        total_loss=Sum('stake', filter=Q(result='RED')),
-        greens_30d=Count('id', filter=Q(result='GREEN', created_at__gte=timezone.now() - timedelta(days=30)))
+        total_stake_green=Sum("stake", filter=Q(result="GREEN")),
+        total_return_green=Sum("potential_profit", filter=Q(result="GREEN")),
+        total_loss=Sum("stake", filter=Q(result="RED")),
+        greens_30d=Count(
+            "id",
+            filter=Q(
+                result="GREEN", created_at__gte=timezone.now() - timedelta(days=30)
+            ),
+        ),
     )
 
-                                          
-    stake_green = metrics['total_stake_green'] or 0
-    return_green = metrics['total_return_green'] or 0
-    total_loss = metrics['total_loss'] or 0
+    stake_green = metrics["total_stake_green"] or 0
+    return_green = metrics["total_return_green"] or 0
+    total_loss = metrics["total_loss"] or 0
 
-                                                                                               
-                                                            
-    profit_net = (return_green - stake_green)
+    profit_net = return_green - stake_green
 
-                                         
     overall_performance = profit_net - total_loss
 
-                      
     recent_bets = all_bets.order_by("-created_at")[:8]
 
-    return render(request, "betting/dashboard.html", {
-        "user_name": request.user.first_name or request.user.username,
-        "bankroll": bankroll,
-        "bets": recent_bets,
+    return render(
+        request,
+        "betting/dashboard.html",
+        {
+            "user_name": request.user.first_name or request.user.username,
+            "bankroll": bankroll,
+            "bets": recent_bets,
+            "chart_profit": profit_net,
+            "chart_loss": total_loss,
+            "chart_balance": bankroll.balance,
+            "greens_last_30": metrics["greens_30d"],
+            "users_online": 1,
+        },
+    )
 
-                        
-        "chart_profit": profit_net,
-        "chart_loss": total_loss,
-        "chart_balance": bankroll.balance,
-
-               
-        "greens_last_30": metrics['greens_30d'],
-        "users_online": 1,               
-    })
 
 def post_status(request):
     try:
-        if request.method == 'POST':
-                                                    
+        if request.method == "POST":
 
-            event_id = request.POST.get('event_id')
+            event_id = request.POST.get("event_id")
             match = Match.objects.get(id=event_id)
             snapshot = SofaScore().get_stats(event_id)
 
@@ -657,58 +631,56 @@ def post_status(request):
     except Exception as e:
         print(e.__traceback__.tb_lineno)
 
+
 def match_snapshots(request, match_id):
-    snaps = LiveSnapshot.objects.filter(
-        match_id=match_id
-    ).order_by("minute")
+    snaps = LiveSnapshot.objects.filter(match_id=match_id).order_by("minute")
 
     data = []
     for s in snaps:
-        data.append({
-            "minute": s.minute,
-            "xg_home": s.xg_home,
-            "xg_away": s.xg_away,
-            "shots_total_home": s.shots_total_home,
-            "shots_total_away": s.shots_total_away,
-            "shots_on_home": s.shots_on_home,
-            "shots_on_away": s.shots_on_away,
-            "possession_home": s.possession_home,
-            "possession_away": s.possession_away,
-            "corners_home": s.corners_home,
-            "corners_away": s.corners_away,
-            "touches_box_home": s.touches_box_home,
-            "touches_box_away": s.touches_box_away,
-            "final_third_entries_home": s.final_third_entries_home,
-            "final_third_entries_away": s.final_third_entries_away,
-            "momentum_score": s.momentum_score,
-        })
+        data.append(
+            {
+                "minute": s.minute,
+                "xg_home": s.xg_home,
+                "xg_away": s.xg_away,
+                "shots_total_home": s.shots_total_home,
+                "shots_total_away": s.shots_total_away,
+                "shots_on_home": s.shots_on_home,
+                "shots_on_away": s.shots_on_away,
+                "possession_home": s.possession_home,
+                "possession_away": s.possession_away,
+                "corners_home": s.corners_home,
+                "corners_away": s.corners_away,
+                "touches_box_home": s.touches_box_home,
+                "touches_box_away": s.touches_box_away,
+                "final_third_entries_home": s.final_third_entries_home,
+                "final_third_entries_away": s.final_third_entries_away,
+                "momentum_score": s.momentum_score,
+            }
+        )
 
     return JsonResponse({"snapshots": data})
+
 
 def result(request):
     stake = float(request.GET.get("stake", 100))
     odd_media = float(request.GET.get("odd", 1.45))
-    liga_id = request.GET.get("liga")                                  
+    liga_id = request.GET.get("liga")
 
-    matches = (
-        Match.objects
-        .select_related("home_team", "away_team", "season", "season__league")
-        .all()
-    )
+    matches = Match.objects.select_related(
+        "home_team", "away_team", "season", "season__league"
+    ).all()
 
-                                                              
     if liga_id:
-                                 
+
         matches = matches.filter(season__league_id=liga_id)
 
-                           
     ligas_disponiveis = League.objects.order_by("name").all()
 
     resultados = []
     greens = reds = pushes = 0
     hoje = now()
     for match in matches:
-                                                            
+
         if not match.finalizado:
             continue
         stats = MatchStats.objects.filter(match=match).first()
@@ -716,19 +688,19 @@ def result(request):
 
         principal = (
             summary.get("forecast", {})
-                   .get("mercados_sugeridos_modelo", {})
-                   .get("principal", "")
+            .get("mercados_sugeridos_modelo", {})
+            .get("principal", "")
         )
 
-        if principal == 'Nenhum mercado seguro' or not principal:
+        if principal == "Nenhum mercado seguro" or not principal:
             continue
 
         if principal.startswith("Over "):
-            tipo = 'Maior'
+            tipo = "Maior"
         elif principal.startswith("Under "):
-            tipo = 'Menor'
+            tipo = "Menor"
         else:
-            tipo = 'Desconhecido'
+            tipo = "Desconhecido"
 
         linha_str = principal.replace("Over ", "").replace("Under ", "")
 
@@ -739,39 +711,41 @@ def result(request):
 
         placar = (match.home_team_score or 0) + (match.away_team_score or 0)
 
-        if tipo == 'Maior':
+        if tipo == "Maior":
             if placar > linha:
-                status = 'GREEN'
+                status = "GREEN"
                 greens += 1
             elif placar < linha:
-                status = 'RED'
+                status = "RED"
                 reds += 1
             else:
-                status = 'PUSH'
+                status = "PUSH"
                 pushes += 1
 
-        elif tipo == 'Menor':
+        elif tipo == "Menor":
             if placar < linha:
-                status = 'GREEN'
+                status = "GREEN"
                 greens += 1
             elif placar > linha:
-                status = 'RED'
+                status = "RED"
                 reds += 1
             else:
-                status = 'PUSH'
+                status = "PUSH"
                 pushes += 1
         else:
-            status = 'N/A'
+            status = "N/A"
 
-        resultados.append({
-            "match": match,
-            "stats": stats,
-            "principal": linha,
-            "tipo": tipo,
-            "status": status,
-            "placar": placar,
-            "liga": match.season,                                    
-        })
+        resultados.append(
+            {
+                "match": match,
+                "stats": stats,
+                "principal": linha,
+                "tipo": tipo,
+                "status": status,
+                "placar": placar,
+                "liga": match.season,
+            }
+        )
 
     total_bets = len(resultados)
     winrate = (greens / total_bets * 100) if total_bets > 0 else 0
@@ -786,7 +760,6 @@ def result(request):
         "stake": stake,
         "odd_media": odd_media,
         "lucro": lucro,
-                                                                                 
         "liga_selecionada": liga_id or "",
     }
 
@@ -797,17 +770,20 @@ def result(request):
             "resultados": resultados,
             "insights": insights,
             "ligas": ligas_disponiveis,
-        }
+        },
     )
+
 
 def update_bet_result(request, bet_id):
     """Atualiza o resultado da aposta (Green ou Red)."""
     bet = get_object_or_404(Bet, id=bet_id)
 
-    result = request.GET.get("result")                    
+    result = request.GET.get("result")
     if result == "green":
         bet.settle_bet(is_green=True)
-        messages.success(request, f"Aposta marcada como GREEN! Lucro adicionado à banca.")
+        messages.success(
+            request, f"Aposta marcada como GREEN! Lucro adicionado à banca."
+        )
     elif result == "red":
         bet.settle_bet(is_green=False)
         messages.warning(request, f"Aposta marcada como RED. Nenhum valor retornado.")
@@ -832,10 +808,6 @@ def get_json(url):
         print(f"❌ Erro em {url}: {e}")
         return None
 
-
-                                                            
-                                                           
-                                                            
 
 def prob_from_ratio(ratio):
     if ratio is None:
@@ -870,7 +842,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
     total_shots = shots_h + shots_a
     total_sot = sot_h + sot_a
 
-            
     start_ts = event.get("startTimestamp")
     current_ts = event.get("time", {}).get("timestamp")
 
@@ -895,7 +866,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
         name = name.lower()
         return ("goal" in name) or ("gols" in name) or ("goals" in name)
 
-             
     for item in streaks_gen + streaks_h2h:
         ratio = item.get("ratio")
         if ratio is None:
@@ -915,7 +885,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
         if team == "away" and ratio >= 0.60:
             away_signals.append(prob_from_ratio(ratio))
 
-                          
     pts_home = home_st.get("points", 0)
     pts_away = away_st.get("points", 0)
     diff_pts = pts_home - pts_away
@@ -925,7 +894,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
     elif diff_pts < -2:
         away_signals.append(65)
 
-                  
     if total_xg >= 2.0:
         over_signals.append(80)
     elif total_xg >= 1.2:
@@ -958,7 +926,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
     if phase == "late" and total_goals == 0 and total_xg < 1.0:
         under_signals.append(80)
 
-                        
     if xg_h > xg_a * 1.5 and xg_h > 0.4:
         home_signals.append(70)
     elif xg_a > xg_h * 1.5 and xg_a > 0.4:
@@ -1018,7 +985,9 @@ def generate_auto_prediction(event, stats, streaks, standings):
         if abs(score_home) < 10:
             mercado_seguro = "Nenhum mercado seguro"
         else:
-            mercado_seguro = "Dupla chance mandante" if score_home > 0 else "Dupla chance visitante"
+            mercado_seguro = (
+                "Dupla chance mandante" if score_home > 0 else "Dupla chance visitante"
+            )
 
     return {
         "probabilidades": {
@@ -1038,14 +1007,6 @@ def generate_auto_prediction(event, stats, streaks, standings):
     }
 
 
-                                                                                          
-                                                                      
-
-
-                                                            
-                                       
-                                                            
-
 def sofascore_scrape_view(request):
 
     year, month = 2025, 10
@@ -1054,14 +1015,25 @@ def sofascore_scrape_view(request):
     date_list = [f"{year}-{month:02d}-{d:02d}" for d in range(1, num_days + 1)]
 
     allowed_leagues = {
-        "premier-league", "laliga", "serie-a",
-        "conmebol-libertadores", "brasileirao-serie-a",
-        "ligue-1", "bundesliga", "trendyol-super-lig",
+        "premier-league",
+        "laliga",
+        "serie-a",
+        "conmebol-libertadores",
+        "brasileirao-serie-a",
+        "ligue-1",
+        "bundesliga",
+        "trendyol-super-lig",
     }
 
     allowed_countries = {
-        "england", "spain", "italy", "south-america",
-        "brazil", "france", "germany", "turkey",
+        "england",
+        "spain",
+        "italy",
+        "south-america",
+        "brazil",
+        "france",
+        "germany",
+        "turkey",
     }
 
     log = []
@@ -1074,7 +1046,8 @@ def sofascore_scrape_view(request):
             continue
 
         events = [
-            e for e in data["events"]
+            e
+            for e in data["events"]
             if e["tournament"]["slug"] in allowed_leagues
             and e["tournament"]["category"]["slug"] in allowed_countries
         ]
@@ -1091,11 +1064,8 @@ def sofascore_scrape_view(request):
                 f"{BASE}/tournament/{tournament_id}/season/{season_id}/standings/total"
             )
 
-                                               
             time.sleep(random.uniform(1.0, 2.5))
 
-                                      
             log.append(f"Processado evento {event_id}")
 
     return JsonResponse({"status": "ok", "log": log})
-

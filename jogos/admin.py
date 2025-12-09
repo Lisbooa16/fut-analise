@@ -1,9 +1,8 @@
 import math
 
-from django.contrib import admin
+from django.contrib import admin, messages
 
-from jogos.models import League, Season, Team, Match, MatchStats, RunningToday
-from django.contrib import messages
+from jogos.models import League, Match, MatchStats, RunningToday, Season, Team
 
 # Register your models here.
 admin.site.register(League)
@@ -11,10 +10,13 @@ admin.site.register(Season)
 admin.site.register(Team)
 admin.site.register(MatchStats)
 
-from django.contrib import admin
-from .models import LiveSnapshot
 import json
+
 import requests
+from django.contrib import admin
+
+from .models import LiveSnapshot
+
 
 def telegram_send(text: str):
     url = f"https://api.telegram.org/bot8087550191:AAHAA3C9lXWBGUFJWCR9jqPt1YfimDBX9Xk/sendMessage"
@@ -30,6 +32,7 @@ def telegram_send(text: str):
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
+
 def safe_json(value):
     """Garante que JSONField string vire dict."""
     if isinstance(value, dict) or isinstance(value, list):
@@ -40,6 +43,7 @@ def safe_json(value):
         except Exception:
             return {}
     return {}
+
 
 def parse_ratio(value: str, default_matches: int = 10) -> float:
     """
@@ -63,6 +67,7 @@ def parse_ratio(value: str, default_matches: int = 10) -> float:
         return max(0.0, min(1.0, num / default_matches))
     except Exception:
         return 0.0
+
 
 def score_from_streaks(items):
     """
@@ -98,6 +103,7 @@ def score_from_streaks(items):
 
     return score
 
+
 def prob_label(p: float) -> str:
     """
     Texto bonitinho tipo: 'Alta (78%)'
@@ -114,6 +120,7 @@ def prob_label(p: float) -> str:
     else:
         nivel = "Baixa"
     return f"{nivel} ({p_pct}%)"
+
 
 def analise_escanteios(general, h2h):
     # 1) Extrair métricas
@@ -134,9 +141,9 @@ def analise_escanteios(general, h2h):
 
     # 2) Modelinho heurístico de probabilidade
     prob_over10 = (
-        0.65 * recent_over10 +
-        0.25 * h2h_over10 +
-        0.10 * max(recent_over10, h2h_over10)  # reforço de tendência
+        0.65 * recent_over10
+        + 0.25 * h2h_over10
+        + 0.10 * max(recent_over10, h2h_over10)  # reforço de tendência
     )
     prob_over10 = max(0, min(1, prob_over10))
 
@@ -158,7 +165,7 @@ def analise_escanteios(general, h2h):
         insights.append("O histórico direto indica partidas com muitos escanteios.")
 
     # Contradição
-    contradicao = (h2h_over10 <= 0.3 and recent_over10 >= 0.7)
+    contradicao = h2h_over10 <= 0.3 and recent_over10 >= 0.7
 
     if contradicao:
         insights.append(
@@ -183,6 +190,7 @@ def analise_escanteios(general, h2h):
         "contradicao": contradicao,
     }
 
+
 def gerar_analise_v3(match):
     # ---------- Dados básicos ----------
     event = safe_json(match.raw_event_json)
@@ -192,8 +200,12 @@ def gerar_analise_v3(match):
     h2h = streaks.get("head2head", [])
     esc = analise_escanteios(general, h2h)
 
-    home_name = event.get("homeTeam", {}).get("name", getattr(match.home_team, "name", "Casa"))
-    away_name = event.get("awayTeam", {}).get("name", getattr(match.away_team, "name", "Fora"))
+    home_name = event.get("homeTeam", {}).get(
+        "name", getattr(match.home_team, "name", "Casa")
+    )
+    away_name = event.get("awayTeam", {}).get(
+        "name", getattr(match.away_team, "name", "Fora")
+    )
     tournament = event.get("tournament", {}).get("name", "Desconhecido")
     status = event.get("status", {}).get("description", "N/A")
 
@@ -220,21 +232,34 @@ def gerar_analise_v3(match):
     p_draw = ed / total
     p_away = ea / total
 
-    stronger = (
-        home_name if home_score_adj > away_score_adj else away_name
-    )
+    stronger = home_name if home_score_adj > away_score_adj else away_name
 
     # ---------- Probabilidades de mercados específicos ----------
 
     # Over/Under 2.5
     recent_over = max(
-        [parse_ratio(s["value"]) for s in general if "more than 2.5 goals" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if "more than 2.5 goals" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     h2h_over = max(
-        [parse_ratio(s["value"]) for s in h2h if "more than 2.5 goals" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in h2h
+            if "more than 2.5 goals" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     h2h_under = max(
-        [parse_ratio(s["value"]) for s in h2h if "less than 2.5 goals" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in h2h
+            if "less than 2.5 goals" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
 
     prob_over25 = 0.65 * recent_over + 0.25 * h2h_over + 0.2 * (1 - h2h_under)
@@ -243,27 +268,55 @@ def gerar_analise_v3(match):
 
     # BTTS
     recent_btts = max(
-        [parse_ratio(s["value"]) for s in general if "both teams scoring" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if "both teams scoring" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     h2h_btts = max(
-        [parse_ratio(s["value"]) for s in h2h if "both teams scoring" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in h2h
+            if "both teams scoring" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     prob_btts = 0.7 * recent_btts + 0.3 * h2h_btts
     prob_btts = max(0.0, min(1.0, prob_btts))
 
     # Quem marca primeiro
     away_first = max(
-        [parse_ratio(s["value"]) for s in general if s.get("team") == "away" and "first to score" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if s.get("team") == "away" and "first to score" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     home_first = max(
-        [parse_ratio(s["value"]) for s in general if s.get("team") == "home" and "first to score" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if s.get("team") == "home" and "first to score" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
     home_first_concede = max(
-        [parse_ratio(s["value"]) for s in general if s.get("team") == "home" and "first to concede" in s.get("name", "").lower()] or [0.0]
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if s.get("team") == "home"
+            and "first to concede" in s.get("name", "").lower()
+        ]
+        or [0.0]
     )
 
     # Heurística: time que mais marca primeiro + adversário que mais sofre
-    raw_away_first_prob = 0.6 * away_first + 0.2 * (1 - home_first) + 0.2 * home_first_concede
+    raw_away_first_prob = (
+        0.6 * away_first + 0.2 * (1 - home_first) + 0.2 * home_first_concede
+    )
     raw_away_first_prob = max(0.0, min(1.0, raw_away_first_prob))
 
     prob_away_first = raw_away_first_prob
@@ -316,40 +369,40 @@ def gerar_analise_v3(match):
     # ---------- Texto resumo p/ Telegram ----------
     resumo = f"""
         *📊 Análise Automática V3*
-        
+
         *{home_name}* vs *{away_name}*
         Campeonato: *{tournament}*
         Status: `{status}`
-        
+
         *Força do Momento* (heurística)
         - {home_name}: `{home_score_adj:.2f}`
         - {away_name}: `{away_score_adj:.2f}`
         - 🔥 Mais forte no momento: *{stronger}*
-        
-        *Probabilidades (qualitativas)*  
+
+        *Probabilidades (qualitativas)*
         - Vitória {home_name}: {prob_label(p_home)}
         - Empate: {prob_label(p_draw)}
         - Vitória {away_name}: {prob_label(p_away)}
-        
+
         - Over 2.5 gols: {prob_label(prob_over25)}
         - Under 2.5 gols: {prob_label(prob_under25)}
         - Ambas Marcam (BTTS): {prob_label(prob_btts)}
         - {home_name} marca primeiro: {prob_label(prob_home_first)}
         - {away_name} marca primeiro: {prob_label(prob_away_first)}
-        
+
         *Escanteios*
         - Over 10.5: {prob_label(esc["prob_over10"])}
         - Under 10.5: {prob_label(esc["prob_under10"])}
-        
+
         *Insights de Escanteios*
         {chr(10).join(f"- {i}" for i in esc["insights"]) or "- Sem dados relevantes"}
-        
+
         *Mercados de Escanteios*
         {chr(10).join(f"- {s}" for s in esc["sugestoes"]) or "- Nenhum mercado com edge claro"}
-        
+
         *Insights principais*
         {chr(10).join(f"- {i}" for i in insights) or "- (sem insights relevantes)"}
-        
+
         *Mercados com boa leitura* (não é recomendação de aposta):
         {chr(10).join(f"- {s}" for s in sugestoes) or "- Nenhum mercado com edge claro pelas estatísticas."}
     """.strip()
@@ -375,6 +428,7 @@ def gerar_analise_v3(match):
         "sugestoes": sugestoes,
         "resumo": resumo,
     }
+
 
 def gerar_analise_v2(match):
     event = safe_json(match.raw_event_json)
@@ -402,13 +456,18 @@ def gerar_analise_v2(match):
         stronger = away_name
 
     # ---- TENDÊNCIAS ----
-    tendencia_over25 = any("2.5" in s.get("name","").lower() for s in general + h2h)
-    tendencia_btts = any("both teams" in s.get("name","").lower() for s in general)
-    tendencia_first = any("first to score" in s.get("name","").lower() for s in general)
+    tendencia_over25 = any("2.5" in s.get("name", "").lower() for s in general + h2h)
+    tendencia_btts = any("both teams" in s.get("name", "").lower() for s in general)
+    tendencia_first = any(
+        "first to score" in s.get("name", "").lower() for s in general
+    )
 
     # ---- CONTRADIÇÕES ----
     contradicao_h2h = False
-    if any("less than 2.5" in s.get("name","").lower() for s in h2h) and tendencia_over25:
+    if (
+        any("less than 2.5" in s.get("name", "").lower() for s in h2h)
+        and tendencia_over25
+    ):
         contradicao_h2h = True
 
     # ---- INSIGHTS ----
@@ -436,8 +495,7 @@ def gerar_analise_v2(match):
         f"- {home_name}: `{home_score}`\n"
         f"- {away_name}: `{away_score}`\n"
         f"- 🔥 Time mais forte no momento: *{stronger}*\n\n"
-        f"🎯 *Insights principais*\n"
-        + "\n".join(f"- {i}" for i in insights)
+        f"🎯 *Insights principais*\n" + "\n".join(f"- {i}" for i in insights)
     )
 
     return {
@@ -451,6 +509,7 @@ def gerar_analise_v2(match):
         "insights": insights,
         "resumo": resumo,
     }
+
 
 def gerar_analise(match):
     event = safe_json(match.raw_event_json)
@@ -468,23 +527,23 @@ def gerar_analise(match):
         lines = []
         for item in lst:
             team = (
-                "Casa" if item.get("team") == "home" else
-                "Fora" if item.get("team") == "away" else
-                "Ambos"
+                "Casa"
+                if item.get("team") == "home"
+                else "Fora" if item.get("team") == "away" else "Ambos"
             )
             lines.append(f"- *{team}*: {item.get('name')} `{item.get('value')}`")
         return "\n".join(lines)
 
     analise_text = f"""
         *📊 Análise Automática da Partida*
-        
+
         *{home}* vs *{away}*
         Campeonato: *{tournament}*
         Status: `{status}`
-        
+
         *🔥 Tendências Gerais*
         {build_section(general)}
-        
+
         *⚔️ Confrontos Diretos*
         {build_section(h2h)}
     """
@@ -512,7 +571,11 @@ class MatchAdmin(admin.ModelAdmin):
         "finalizado",
         "current_minute",
     )
-    actions = ["gerar_analise_e_enviar", "action_gerar_analise_v2", "gerar_analise_v3_action"]
+    actions = [
+        "gerar_analise_e_enviar",
+        "action_gerar_analise_v2",
+        "gerar_analise_v3_action",
+    ]
 
     list_filter = (
         "finalizado",
@@ -531,51 +594,61 @@ class MatchAdmin(admin.ModelAdmin):
 
     ordering = ("-date",)
 
-    readonly_fields = (
-        "created_at",
-    )
+    readonly_fields = ("created_at",)
 
     fieldsets = (
-        ("Informações da Partida", {
-            "fields": (
-                "season",
-                "external_id",
-                "slug",
-                "home_team",
-                "away_team",
-                "date",
-                "finalizado",
-                "current_minute",
-                "home_team_score",
-                "away_team_score",
-            )
-        }),
-        ("IDs Técnicos", {
-            "fields": (
-                "tournament_id",
-                "season_ids",
-                "home_id",
-                "away_id",
-            ),
-            "classes": ("collapse",)
-        }),
-        ("Dados Internos (JSON)", {
-            "fields": (
-                "insights",
-                "previsao_automatica",
-                "raw_event_json",
-                "raw_statistics_json",
-                "event_json",
-                "stading_json",
-                "stats_json",
-                "streaks_json",
-                "analise",
-            ),
-            "classes": ("collapse",)
-        }),
-        ("Metadados", {
-            "fields": ("created_at",),
-        }),
+        (
+            "Informações da Partida",
+            {
+                "fields": (
+                    "season",
+                    "external_id",
+                    "slug",
+                    "home_team",
+                    "away_team",
+                    "date",
+                    "finalizado",
+                    "current_minute",
+                    "home_team_score",
+                    "away_team_score",
+                )
+            },
+        ),
+        (
+            "IDs Técnicos",
+            {
+                "fields": (
+                    "tournament_id",
+                    "season_ids",
+                    "home_id",
+                    "away_id",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Dados Internos (JSON)",
+            {
+                "fields": (
+                    "insights",
+                    "previsao_automatica",
+                    "raw_event_json",
+                    "raw_statistics_json",
+                    "event_json",
+                    "stading_json",
+                    "stats_json",
+                    "streaks_json",
+                    "analise",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadados",
+            {
+                "fields": ("created_at",),
+            },
+        ),
     )
 
     # Para permitir edição mais confortável dos JSONs
@@ -601,7 +674,10 @@ class MatchAdmin(admin.ModelAdmin):
 
             enviados += 1
 
-        self.message_user(request, f"Análises geradas e enviadas para o Telegram ({enviados} jogo(s))!")
+        self.message_user(
+            request,
+            f"Análises geradas e enviadas para o Telegram ({enviados} jogo(s))!",
+        )
 
     def action_gerar_analise_v2(self, request, queryset):
         enviados = 0
@@ -637,20 +713,28 @@ class MatchAdmin(admin.ModelAdmin):
             level=messages.SUCCESS,
         )
 
-    gerar_analise_v3_action.short_description = "Gerar análise V3 + enviar para o Telegram"
+    gerar_analise_v3_action.short_description = (
+        "Gerar análise V3 + enviar para o Telegram"
+    )
 
-    action_gerar_analise_v2.short_description = "Gerar análise avançada V2 + enviar Telegram"
+    action_gerar_analise_v2.short_description = (
+        "Gerar análise avançada V2 + enviar Telegram"
+    )
 
     gerar_analise_e_enviar.short_description = "Gerar análise e enviar para o Telegram"
+
 
 @admin.register(LiveSnapshot)
 class LiveSnapshotAdmin(admin.ModelAdmin):
     list_display = (
         "match",
         "minute",
-        "xg_home", "xg_away",
-        "shots_on_home", "shots_on_away",
-        "corners_home", "corners_away",
+        "xg_home",
+        "xg_away",
+        "shots_on_home",
+        "shots_on_away",
+        "corners_home",
+        "corners_away",
         "momentum_score",
         "created_at",
     )
@@ -672,59 +756,72 @@ class LiveSnapshotAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at",)
 
     fieldsets = (
-        ("Informações básicas", {
-            "fields": (
-                "match",
-                "minute",
-                "created_at",
-                "momentum_score",
-            )
-        }),
-
-        ("Ofensivo Principal", {
-            "fields": (
-                ("xg_home", "xg_away"),
-                ("shots_on_home", "shots_on_away"),
-                ("shots_total_home", "shots_total_away"),
-                ("corners_home", "corners_away"),
-                ("possession_home", "possession_away"),
-            )
-        }),
-
-        ("Profundidade Ofensiva", {
-            "fields": (
-                ("touches_box_home", "touches_box_away"),
-                ("final_third_entries_home", "final_third_entries_away"),
-                ("big_chances_home", "big_chances_away"),
-                ("big_chances_missed_home", "big_chances_missed_away"),
-                ("shots_inside_box_home", "shots_inside_box_away"),
-                ("shots_outside_box_home", "shots_outside_box_away"),
-            )
-        }),
-
-        ("Defensivo", {
-            "fields": (
-                ("interceptions_home", "interceptions_away"),
-                ("clearances_home", "clearances_away"),
-                ("recoveries_home", "recoveries_away"),
-                ("tackles_won_home", "tackles_won_away"),
-            )
-        }),
-
-        ("Goalkeeping", {
-            "fields": (
-                ("saves_home", "saves_away"),
-                ("goals_prevented_home", "goals_prevented_away"),
-            )
-        }),
-
-        ("Disciplina", {
-            "fields": (
-                ("fouls_home", "fouls_away"),
-                ("yellow_home", "yellow_away"),
-                ("red_home", "red_away"),
-            )
-        }),
+        (
+            "Informações básicas",
+            {
+                "fields": (
+                    "match",
+                    "minute",
+                    "created_at",
+                    "momentum_score",
+                )
+            },
+        ),
+        (
+            "Ofensivo Principal",
+            {
+                "fields": (
+                    ("xg_home", "xg_away"),
+                    ("shots_on_home", "shots_on_away"),
+                    ("shots_total_home", "shots_total_away"),
+                    ("corners_home", "corners_away"),
+                    ("possession_home", "possession_away"),
+                )
+            },
+        ),
+        (
+            "Profundidade Ofensiva",
+            {
+                "fields": (
+                    ("touches_box_home", "touches_box_away"),
+                    ("final_third_entries_home", "final_third_entries_away"),
+                    ("big_chances_home", "big_chances_away"),
+                    ("big_chances_missed_home", "big_chances_missed_away"),
+                    ("shots_inside_box_home", "shots_inside_box_away"),
+                    ("shots_outside_box_home", "shots_outside_box_away"),
+                )
+            },
+        ),
+        (
+            "Defensivo",
+            {
+                "fields": (
+                    ("interceptions_home", "interceptions_away"),
+                    ("clearances_home", "clearances_away"),
+                    ("recoveries_home", "recoveries_away"),
+                    ("tackles_won_home", "tackles_won_away"),
+                )
+            },
+        ),
+        (
+            "Goalkeeping",
+            {
+                "fields": (
+                    ("saves_home", "saves_away"),
+                    ("goals_prevented_home", "goals_prevented_away"),
+                )
+            },
+        ),
+        (
+            "Disciplina",
+            {
+                "fields": (
+                    ("fouls_home", "fouls_away"),
+                    ("yellow_home", "yellow_away"),
+                    ("red_home", "red_away"),
+                )
+            },
+        ),
     )
 
 

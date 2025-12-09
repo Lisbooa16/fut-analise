@@ -1,5 +1,6 @@
 import requests
 
+
 class BetanoStatsClient:
     BASE_URL = "https://stats.fn.sportradar.com/betano/br/America:Montevideo/gismo"
 
@@ -36,15 +37,17 @@ class TeamStats:
         results = []
 
         for m in self.matches:
-            results.append({
-                "date": m["time"]["date"],
-                "home": m["teams"]["home"]["name"],
-                "away": m["teams"]["away"]["name"],
-                "score": f"{m['result']['home']}:{m['result']['away']}",
-                "goals_home": m["result"]["home"],
-                "goals_away": m["result"]["away"],
-                "winner": m["result"].get("winner")
-            })
+            results.append(
+                {
+                    "date": m["time"]["date"],
+                    "home": m["teams"]["home"]["name"],
+                    "away": m["teams"]["away"]["name"],
+                    "score": f"{m['result']['home']}:{m['result']['away']}",
+                    "goals_home": m["result"]["home"],
+                    "goals_away": m["result"]["away"],
+                    "winner": m["result"].get("winner"),
+                }
+            )
 
         return results
 
@@ -112,11 +115,7 @@ def gerar_analise(team_id=2713, jogos=30):
     for r in resultados:
         print(r)
 
-    return {
-        "resumo": resumo,
-        "tendencia": tendencia,
-        "resultados": resultados
-    }
+    return {"resumo": resumo, "tendencia": tendencia, "resultados": resultados}
 
 
 if __name__ == "__main__":

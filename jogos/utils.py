@@ -3,10 +3,20 @@ from datetime import datetime
 
 from django.db import transaction
 from django.utils.timezone import now
-from jogos.models import League, Season, Team, Match, MatchStats
+
+from jogos.models import League, Match, MatchStats, Season, Team
 
 
-def save_sofascore_data(event, stats, insights, streaks, standings, previsao, raw_event_json, raw_statistics_json):
+def save_sofascore_data(
+    event,
+    stats,
+    insights,
+    streaks,
+    standings,
+    previsao,
+    raw_event_json,
+    raw_statistics_json,
+):
     """
     Salva League, Season, Team, Match e MatchStats
     usando os dados já processados do Sofascore.
@@ -75,7 +85,7 @@ def save_sofascore_data(event, stats, insights, streaks, standings, previsao, ra
             "raw_event_json": raw_event_json,
             "raw_statistics_json": raw_statistics_json,
             "finalizado": event["status"]["type"] == "finished",
-        }
+        },
     )
 
     # Atualização mínima
@@ -151,6 +161,7 @@ def save_sofascore_data(event, stats, insights, streaks, standings, previsao, ra
 
 import math
 
+
 def safe(val):
     if val is None:
         return 0
@@ -204,7 +215,7 @@ def analyze_match(data_event, data_stats):
         # força relativa
         total_force = hc + ac
         home_strength = (hc / total_force) * mandante_bonus
-        away_strength = (ac / total_force)
+        away_strength = ac / total_force
 
         # gols esperados baseados na liga
         avg_goals = 2.6 * peso_liga
@@ -224,9 +235,11 @@ def analyze_match(data_event, data_stats):
         fav = home if home_strength > away_strength else away
 
         insights = [
-            f"⚽ Liga: {data_event['tournament']['name']}. Expectativa média de gols elevada." if peso_liga > 1 else
-            f"⚽ Liga com tendência mais defensiva ({data_event['tournament']['name']}).",
-
+            (
+                f"⚽ Liga: {data_event['tournament']['name']}. Expectativa média de gols elevada."
+                if peso_liga > 1
+                else f"⚽ Liga com tendência mais defensiva ({data_event['tournament']['name']})."
+            ),
             f"📌 {home} tem vantagem natural por jogar em casa.",
             f"📊 Força relativa: {home} ({hc}) vs {away} ({ac}).",
             f"⭐ Favorito pré-jogo: {fav}.",
@@ -249,9 +262,13 @@ def analyze_match(data_event, data_stats):
             },
             "projected_score": f"{lam_home:.1f} x {lam_away:.1f}",
             "recommendation": (
-                "Over 1.5 (pré-jogo)" if p_over_1_5 > 0.72 else
-                "BTTS (pré-jogo)" if p_btts > 0.65 else
-                "Nenhuma entrada segura pré-live"
+                "Over 1.5 (pré-jogo)"
+                if p_over_1_5 > 0.72
+                else (
+                    "BTTS (pré-jogo)"
+                    if p_btts > 0.65
+                    else "Nenhuma entrada segura pré-live"
+                )
             ),
             "confidence": round((p_over_2_5 * 0.6 + p_btts * 0.4) * 100, 1),
             "insights": insights,
@@ -299,7 +316,7 @@ def analyze_match(data_event, data_stats):
 
     # modelo poisson
     def poisson(lam, k):
-        return (lam ** k * math.exp(-lam)) / math.factorial(k)
+        return (lam**k * math.exp(-lam)) / math.factorial(k)
 
     p_over_2_5 = 1 - sum(poisson(total_xg, i) for i in range(3))
     p_over_1_5 = min(1, p_over_2_5 + 0.20)
@@ -312,10 +329,17 @@ def analyze_match(data_event, data_stats):
 
     # recomendação
     rec = (
-        "Over 1.5 gols (LIVE)" if p_over_1_5 > 0.72 else
-        "Ambas Marcam (LIVE)" if p_btts > 0.60 else
-        "Gol no 2º tempo" if p_goal_h2 > 0.65 else
-        "Nenhuma entrada segura ainda"
+        "Over 1.5 gols (LIVE)"
+        if p_over_1_5 > 0.72
+        else (
+            "Ambas Marcam (LIVE)"
+            if p_btts > 0.60
+            else (
+                "Gol no 2º tempo"
+                if p_goal_h2 > 0.65
+                else "Nenhuma entrada segura ainda"
+            )
+        )
     )
 
     # confiança
@@ -326,7 +350,9 @@ def analyze_match(data_event, data_stats):
     if total_big >= 4:
         insights.append("⚽ Muitas chances claras — jogo muito aberto.")
     if total_sot >= 8:
-        insights.append("🔥 Alto volume de finalizações no alvo — forte tendência de gol.")
+        insights.append(
+            "🔥 Alto volume de finalizações no alvo — forte tendência de gol."
+        )
     if xg_home > xg_away:
         insights.append(f"📌 {home} é mais perigoso até agora.")
     if xg_away > xg_home:
@@ -343,15 +369,14 @@ def analyze_match(data_event, data_stats):
             "goal_h2": round(p_goal_h2 * 100, 1),
         },
         "odds": {
-            "over_1_5": round(1/p_over_1_5, 2),
-            "over_2_5": round(1/p_over_2_5, 2),
-            "btts": round(1/p_btts, 2) if p_btts else  0,
-            "goal_h2": round(1/p_goal_h2, 2) if p_goal_h2 else 0,
-            "under_2_5": round(1/p_under_2_5, 2) if p_under_2_5 else  0,
+            "over_1_5": round(1 / p_over_1_5, 2),
+            "over_2_5": round(1 / p_over_2_5, 2),
+            "btts": round(1 / p_btts, 2) if p_btts else 0,
+            "goal_h2": round(1 / p_goal_h2, 2) if p_goal_h2 else 0,
+            "under_2_5": round(1 / p_under_2_5, 2) if p_under_2_5 else 0,
         },
         "projected_score": f"{projected_home:.1f} x {projected_away:.1f}",
         "recommendation": rec,
         "confidence": confidence,
         "insights": insights,
     }
-

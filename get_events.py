@@ -1,22 +1,42 @@
+import json
 import re
 import time
-from datetime import datetime
-
 from datetime import datetime, timedelta
 
+import requests
 from django.db.models import Avg, F
 from django.utils import timezone
 
 from bet.models import PossibleBet
-from jogos.models import League, Season, Team, Match, LiveSnapshot, MatchStats
+from jogos.models import League, LiveSnapshot, Match, MatchStats, Season, Team
 from jogos.utils import save_sofascore_data
-import requests
-import json
 
 BASE = "https://www.sofascore.com/api/v1"
 headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-allowed_leagues = {"premier-league", "laliga", "serie-a", "conmebol-libertadore", "brasileirao-serie-a", "ligue-1", "bundesliga", "trendyol-super-lig", "primera-lpf-clausura-playoffs"}
-allowed_countries = {"england", "spain", "italy", "south-america", "brazil", "france", "germany", "turkey", "argentina"}
+allowed_leagues = {
+    "premier-league",
+    "laliga",
+    "serie-a",
+    "conmebol-libertadore",
+    "brasileirao-serie-a",
+    "ligue-1",
+    "bundesliga",
+    "trendyol-super-lig",
+    "primera-lpf-clausura-playoffs",
+}
+allowed_countries = {
+    "england",
+    "spain",
+    "italy",
+    "south-america",
+    "brazil",
+    "france",
+    "germany",
+    "turkey",
+    "argentina",
+}
+
+
 class SofaScore:
     def __init__(self, date: list = None):
         self.date = date
@@ -64,13 +84,19 @@ class SofaScore:
         html = r.text
         js_files = self._extract_js_files(html)
         if not js_files:
-            raise Exception("Nenhum arquivo JS encontrado na homepage (nova estrutura).")
+            raise Exception(
+                "Nenhum arquivo JS encontrado na homepage (nova estrutura)."
+            )
 
             # 2) tentar extrair JWT de cada script
         for js_url in js_files:
             try:
-                js = self.session.get(js_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5).text
-                token_match = re.search(r'(eyJ[^\"\'\s]+?\.[^\"\'\s]+?\.[^\"\'\s]+)', js)
+                js = self.session.get(
+                    js_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5
+                ).text
+                token_match = re.search(
+                    r"(eyJ[^\"\'\s]+?\.[^\"\'\s]+?\.[^\"\'\s]+)", js
+                )
 
                 if token_match:
                     token = token_match.group(1)
@@ -113,7 +139,9 @@ class SofaScore:
             for g in ALL.get("groups", []):
                 for it in g.get("statisticsItems", []):
                     if it.get("key") == key:
-                        return float(it.get("homeValue", 0)), float(it.get("awayValue", 0))
+                        return float(it.get("homeValue", 0)), float(
+                            it.get("awayValue", 0)
+                        )
             return default
 
         insights = []
@@ -169,6 +197,7 @@ class SofaScore:
     @staticmethod
     def generate_insights(event, stats, match: Match):
         try:
+
             def extract_stat(stats, key):
                 for period in stats.get("statistics", []):
                     if period.get("period") != "ALL":
@@ -176,7 +205,9 @@ class SofaScore:
                     for group in period.get("groups", []):
                         for item in group.get("statisticsItems", []):
                             if item.get("key") == key:
-                                return float(item.get("homeValue", 0)), float(item.get("awayValue", 0))
+                                return float(item.get("homeValue", 0)), float(
+                                    item.get("awayValue", 0)
+                                )
                 return 0.0, 0.0
 
             home = match.home_team.name
@@ -224,7 +255,7 @@ class SofaScore:
                     "xg": {"home": xg_home, "away": xg_away},
                     "shots": {"home": shots_home, "away": shots_away},
                     "shots_on": {"home": shots_on_home, "away": shots_on_away},
-                    "posse": {"home": possession_home, "away": possession_away}
+                    "posse": {"home": possession_home, "away": possession_away},
                 },
                 "insights": insights,
             }
@@ -233,43 +264,43 @@ class SofaScore:
 
     def get_json(self, url):
         cookies = {
-            '_gcl_au': '1.1.1410777148.1764702710',
-            '_ga': 'GA1.1.838785703.1764702710',
-            'g_state': '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
-            '_fbp': 'fb.1.1764703877532.613688672911968169',
-            '_ga_47RNFYWRSH': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-            '_ga_L47NC0LK6B': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-            '_cc_id': '75f94bbc4fb7420f2cf0732add121ee8',
-            'panoramaId_expiry': '1765227822427',
-            'panoramaId': 'f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d',
-            '_li_dcdm_c': '.sofascore.com',
-            '__gads': 'ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A',
-            '__gpi': 'UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg',
-            '__eoi': 'ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU',
-            'cto_bundle': '8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q',
-            'cto_bidid': 'y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE',
-            'FCCDCF': '%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D',
-            'FCNEC': '%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D',
-            '_ga_HNQ9P9MGZR': 'GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
+            "_gcl_au": "1.1.1410777148.1764702710",
+            "_ga": "GA1.1.838785703.1764702710",
+            "g_state": '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
+            "_fbp": "fb.1.1764703877532.613688672911968169",
+            "_ga_47RNFYWRSH": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+            "_ga_L47NC0LK6B": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+            "_cc_id": "75f94bbc4fb7420f2cf0732add121ee8",
+            "panoramaId_expiry": "1765227822427",
+            "panoramaId": "f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d",
+            "_li_dcdm_c": ".sofascore.com",
+            "__gads": "ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A",
+            "__gpi": "UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg",
+            "__eoi": "ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU",
+            "cto_bundle": "8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q",
+            "cto_bidid": "y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE",
+            "FCCDCF": "%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D",
+            "FCNEC": "%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D",
+            "_ga_HNQ9P9MGZR": "GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0",
         }
 
         headers = {
-            'accept': '*/*',
-            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'baggage': 'sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84',
-            'cache-control': 'max-age=0',
-            'priority': 'u=1, i',
-            'referer': 'https://www.sofascore.com/pt/',
-            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'sentry-trace': 'dbc7b2174ca14e084df635b543355a84-870d2e1df1444643',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-            'x-captcha': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg',
-            'x-requested-with': 'f690cc',
+            "accept": "*/*",
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "baggage": "sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84",
+            "cache-control": "max-age=0",
+            "priority": "u=1, i",
+            "referer": "https://www.sofascore.com/pt/",
+            "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "sentry-trace": "dbc7b2174ca14e084df635b543355a84-870d2e1df1444643",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "x-captcha": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg",
+            "x-requested-with": "f690cc",
             # 'cookie': '_gcl_au=1.1.1410777148.1764702710; _ga=GA1.1.838785703.1764702710; g_state={"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}; _fbp=fb.1.1764703877532.613688672911968169; _ga_47RNFYWRSH=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _ga_L47NC0LK6B=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _cc_id=75f94bbc4fb7420f2cf0732add121ee8; panoramaId_expiry=1765227822427; panoramaId=f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d; _li_dcdm_c=.sofascore.com; __gads=ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A; __gpi=UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg; __eoi=ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU; cto_bundle=8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q; cto_bidid=y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE; FCCDCF=%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D; FCNEC=%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D; _ga_HNQ9P9MGZR=GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
         }
 
@@ -320,15 +351,21 @@ class SofaScore:
             for item in streaks.get(group, []):
                 r = parse_value(item.get("value", "0"))
 
-                analyzed[group].append({
-                    "name": item.get("name"),
-                    "team": item.get("team"),
-                    "value": item.get("value"),
-                    "ratio": r,
-                    "hot": r is not None and r >= 0.60,
-                    "intensity": classify(r),
-                    "insight": insight_text(item.get("name"), r, item.get("team")) if r else None
-                })
+                analyzed[group].append(
+                    {
+                        "name": item.get("name"),
+                        "team": item.get("team"),
+                        "value": item.get("value"),
+                        "ratio": r,
+                        "hot": r is not None and r >= 0.60,
+                        "intensity": classify(r),
+                        "insight": (
+                            insight_text(item.get("name"), r, item.get("team"))
+                            if r
+                            else None
+                        ),
+                    }
+                )
 
         return analyzed
 
@@ -350,11 +387,11 @@ class SofaScore:
 
         # Pesos calibrados (padrão profissional)
         momentum = (
-                dxg * 120 +  # xG recente vale MUITO
-                dshots_on * 15 +  # chute no alvo recente
-                dtouches * 3 +  # toques na área = pressão
-                dthird * 2 +  # entradas no terço final
-                dpossession * 0.4  # posse agressiva influência menor
+            dxg * 120  # xG recente vale MUITO
+            + dshots_on * 15  # chute no alvo recente
+            + dtouches * 3  # toques na área = pressão
+            + dthird * 2  # entradas no terço final
+            + dpossession * 0.4  # posse agressiva influência menor
         )
 
         return float(momentum)
@@ -370,7 +407,9 @@ class SofaScore:
         stats_list = raw.get("statistics", [])
 
         if not isinstance(stats_list, list):
-            raise ValueError("Formato inválido: raw['statistics'] deveria ser uma lista.")
+            raise ValueError(
+                "Formato inválido: raw['statistics'] deveria ser uma lista."
+            )
 
         # 2) Pega o período ALL
         period_all = None
@@ -390,7 +429,9 @@ class SofaScore:
                 for item in group.get("statisticsItems", []):
                     if item.get("key") == key:
                         try:
-                            return float(item.get("homeValue", default)), float(item.get("awayValue", default))
+                            return float(item.get("homeValue", default)), float(
+                                item.get("awayValue", default)
+                            )
                         except Exception:
                             return default, default
             return default, default
@@ -404,11 +445,15 @@ class SofaScore:
 
         # ====== PROFUNDIDADE OFENSIVA ======
         touches_box_home, touches_box_away = get_stat("touchesInOppBox")
-        final_third_entries_home, final_third_entries_away = get_stat("finalThirdEntries")
+        final_third_entries_home, final_third_entries_away = get_stat(
+            "finalThirdEntries"
+        )
         big_chances_home, big_chances_away = get_stat("bigChanceCreated")
         big_chances_missed_home, big_chances_missed_away = get_stat("bigChanceMissed")
         shots_inside_box_home, shots_inside_box_away = get_stat("totalShotsInsideBox")
-        shots_outside_box_home, shots_outside_box_away = get_stat("totalShotsOutsideBox")
+        shots_outside_box_home, shots_outside_box_away = get_stat(
+            "totalShotsOutsideBox"
+        )
 
         # ====== DEFENSIVO ======
         interceptions_home, interceptions_away = get_stat("interceptionWon")
@@ -417,8 +462,16 @@ class SofaScore:
         # tackles vencidos = % * total_tackles (se quiser algo mais preciso)
         total_tackles_home, total_tackles_away = get_stat("totalTackle")
         tackles_pct_home, tackles_pct_away = get_stat("wonTacklePercent")
-        tackles_won_home = int(round(total_tackles_home * (tackles_pct_home / 100.0))) if total_tackles_home else 0
-        tackles_won_away = int(round(total_tackles_away * (tackles_pct_away / 100.0))) if total_tackles_away else 0
+        tackles_won_home = (
+            int(round(total_tackles_home * (tackles_pct_home / 100.0)))
+            if total_tackles_home
+            else 0
+        )
+        tackles_won_away = (
+            int(round(total_tackles_away * (tackles_pct_away / 100.0)))
+            if total_tackles_away
+            else 0
+        )
 
         # ====== GOALKEEPING ======
         saves_home, saves_away = get_stat("goalkeeperSaves")
@@ -434,61 +487,42 @@ class SofaScore:
         return {
             "xg_home": xg_home,
             "xg_away": xg_away,
-
             "shots_total_home": shots_total_home,
             "shots_total_away": shots_total_away,
-
             "shots_on_home": shots_on_home,
             "shots_on_away": shots_on_away,
-
             "possession_home": possession_home,
             "possession_away": possession_away,
-
             "corners_home": corners_home,
             "corners_away": corners_away,
-
             "touches_box_home": touches_box_home,
             "touches_box_away": touches_box_away,
-
             "final_third_entries_home": final_third_entries_home,
             "final_third_entries_away": final_third_entries_away,
-
             "big_chances_home": int(big_chances_home),
             "big_chances_away": int(big_chances_away),
-
             "big_chances_missed_home": int(big_chances_missed_home),
             "big_chances_missed_away": int(big_chances_missed_away),
-
             "shots_inside_box_home": int(shots_inside_box_home),
             "shots_inside_box_away": int(shots_inside_box_away),
-
             "shots_outside_box_home": int(shots_outside_box_home),
             "shots_outside_box_away": int(shots_outside_box_away),
-
             "interceptions_home": int(interceptions_home),
             "interceptions_away": int(interceptions_away),
-
             "clearances_home": int(clearances_home),
             "clearances_away": int(clearances_away),
-
             "recoveries_home": int(recoveries_home),
             "recoveries_away": int(recoveries_away),
-
             "tackles_won_home": tackles_won_home,
             "tackles_won_away": tackles_won_away,
-
             "saves_home": int(saves_home),
             "saves_away": int(saves_away),
-
             "goals_prevented_home": goals_prevented_home,
             "goals_prevented_away": goals_prevented_away,
-
             "fouls_home": int(fouls_home),
             "fouls_away": int(fouls_away),
-
             "yellow_home": int(yellow_home),
             "yellow_away": int(yellow_away),
-
             "red_home": int(red_home),
             "red_away": int(red_away),
         }
@@ -508,7 +542,8 @@ class SofaScore:
                     "goals_against": row["scoresAgainst"],
                     "goal_diff": row["scoreDiffFormatted"],
                     "is_top": row["position"] <= 4,
-                    "is_relegation": row.get("promotion", {}).get("text") == "Relegation"
+                    "is_relegation": row.get("promotion", {}).get("text")
+                    == "Relegation",
                 }
         return None
 
@@ -571,7 +606,9 @@ class SofaScore:
                     for item in group.get("statisticsItems", []):
                         if item.get("key") == key:
                             # muitos vêm como homeValue/awayValue
-                            return float(item.get("homeValue", 0.0)), float(item.get("awayValue", 0.0))
+                            return float(item.get("homeValue", 0.0)), float(
+                                item.get("awayValue", 0.0)
+                            )
         except Exception:
             pass
         return default, default
@@ -592,7 +629,8 @@ class SofaScore:
                         "goals_against": row["scoresAgainst"],
                         "goal_diff": row["scoreDiffFormatted"],
                         "is_top": row["position"] <= 4,
-                        "is_relegation": row.get("promotion", {}).get("text") == "Relegation"
+                        "is_relegation": row.get("promotion", {}).get("text")
+                        == "Relegation",
                     }
 
             return None
@@ -600,7 +638,7 @@ class SofaScore:
             return None
 
     def analyze_last_snapshots(self, match, window=10):
-        qs  = LiveSnapshot.objects.filter(match=match).order_by("-minute")[:window]
+        qs = LiveSnapshot.objects.filter(match=match).order_by("-minute")[:window]
         snaps = list(reversed(qs))  # agora em ordem cronológica
 
         if len(snaps) < 2:
@@ -612,7 +650,7 @@ class SofaScore:
                 "over_25_trend": "Sem tendência",
                 "corners_signal": "",
                 "pressure_reason_home": "",
-                "pressure_reason_away": ""
+                "pressure_reason_away": "",
             }
 
         # DIFERENÇAS ENTRE PRIMEIRO E ÚLTIMO SNAP
@@ -635,145 +673,153 @@ class SofaScore:
 
         corners_spike = (delta_corners_home + delta_corners_away) >= 3
 
-        goal_incoming = (
-                pressure_home or pressure_away or avg_momentum >= 0.70
-        )
+        goal_incoming = pressure_home or pressure_away or avg_momentum >= 0.70
         match.analise = {
             "pressure_home": pressure_home,
             "pressure_away": pressure_away,
-
             "pressure_reason_home": (
                 f"Home criou {delta_xg_home:.2f} xG e {delta_shots_on_home} finalizações no gol nos últimos {window} snapshots."
-                if pressure_home else ""
+                if pressure_home
+                else ""
             ),
             "pressure_reason_away": (
                 f"Away criou {delta_xg_away:.2f} xG e {delta_shots_on_away} finalizações no gol nos últimos {window} snapshots."
-                if pressure_away else ""
+                if pressure_away
+                else ""
             ),
             "corners_signal": (
                 f"{delta_corners_home + delta_corners_away} cantos nos últimos {window} snapshots."
-                if corners_spike else ""
+                if corners_spike
+                else ""
             ),
-
             # As chaves abaixo já usam ternário corretamente para definir o VALOR:
             "goal_warning": (
-                "ALTO risco de gol nos próximos minutos" if goal_incoming else "Jogo moderado"
+                "ALTO risco de gol nos próximos minutos"
+                if goal_incoming
+                else "Jogo moderado"
             ),
             "over_15_signal": goal_incoming or corners_spike,
-            "over_25_trend": "Ritmo crescendo" if (delta_xg_home + delta_xg_away) >= 0.30 else "Normal",
+            "over_25_trend": (
+                "Ritmo crescendo"
+                if (delta_xg_home + delta_xg_away) >= 0.30
+                else "Normal"
+            ),
         }
-        match.save(update_fields=['analise'])
-
+        match.save(update_fields=["analise"])
 
         return {
             "pressure_home": pressure_home,
             "pressure_away": pressure_away,
-
             "pressure_reason_home": (
                 f"Home criou {delta_xg_home:.2f} xG e {delta_shots_on_home} finalizações no gol nos últimos {window} snapshots."
-                if pressure_home else ""
+                if pressure_home
+                else ""
             ),
-
             "pressure_reason_away": (
                 f"Away criou {delta_xg_away:.2f} xG e {delta_shots_on_away} finalizações no gol nos últimos {window} snapshots."
-                if pressure_away else ""
+                if pressure_away
+                else ""
             ),
-
             "corners_signal": (
                 f"{delta_corners_home + delta_corners_away} cantos nos últimos {window} snapshots."
-                if corners_spike else ""
+                if corners_spike
+                else ""
             ),
-
             "goal_warning": (
-                "ALTO risco de gol nos próximos minutos" if goal_incoming else "Jogo moderado"
+                "ALTO risco de gol nos próximos minutos"
+                if goal_incoming
+                else "Jogo moderado"
             ),
-
             "over_15_signal": goal_incoming or corners_spike,
-            "over_25_trend": "Ritmo crescendo" if (delta_xg_home + delta_xg_away) >= 0.30 else "Normal",
+            "over_25_trend": (
+                "Ritmo crescendo"
+                if (delta_xg_home + delta_xg_away) >= 0.30
+                else "Normal"
+            ),
         }
 
     def get_events(self):
         BASE = "https://www.sofascore.com/api/v1"
         cookies = {
-            '_gcl_au': '1.1.749561030.1764753513',
-            '_ga': 'GA1.1.301697650.1764753513',
-            'panoramaId_expiry': '1764839942998',
-            '_cc_id': 'e66109d69e600fa7d045753fd1c08da7',
-            '__gads': 'ID=b19e2af804df34f6:T=1764753544:RT=1764753544:S=ALNI_Mb774vAMtsBLP4s6VQjOoKd3YZNLw',
-            '__gpi': 'UID=000012a96e395a7b:T=1764753544:RT=1764753544:S=ALNI_MZ0MxICjdnU5Nq0va2o9Yv6QxaXLg',
-            '__eoi': 'ID=a44ab7d32d94bf0e:T=1764753544:RT=1764753544:S=AA-AfjYGzo1PCV-NEccU8ri4Ortc',
-            'cto_bundle': 'W0md0V9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHamFUbU44ZXFueXFCZmljeU12MUVwU1drVDdZY0tiSUtPU3ZoRjNuQ05XdDFtUm1NQXJHdWxhRm9aRGJ2SWhrSTZGMUtOcWJ0aG5mSFBwN2k4cDAwSSUyRndWY2VHN2c4VHg1bXBFMjhLU1NvdVJNNDVmR1JXZyUyQlFUY2t2UnAzdTdZQSUzRCUzRA',
-            'cto_bidid': '_RDW419XUUlxMlZTa0RnbElrUGh1c2dISCUyRmF3TTV1U3N5R1BFaTdrdyUyRkxqcVowaDlpTGNHd1F6WFVuZktvZ0VYJTJGUkRBeHFZJTJCU1EycSUyRndKZFBPYWF3Z2pMcnBab0E5cmdGN1BmclVvcmllWERKdzAlM0Q',
-            'cto_dna_bundle': '4-dbil9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHdjJXekw5Z2clMkZTWG9lQVAwRGI1VHZGJTJCZmw3S1BoZlVwSXRrJTJCQTJtY0RDQ3Vnb2NqekZiNE1zM1hEbDFwM0x6RXclM0QlM0Q',
-            'FCCDCF': '%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22477a8ff6-936e-4b5d-80b7-8e13a051ee83%5C%22%2C%5B1764753512%2C120000000%5D%5D%22%5D%5D%5D',
-            'FCNEC': '%5B%5B%22AKsRol944nQG5wkdFdgpzEqQ9bd8wYj_gbM09X2ehrsPjOGDMVqr7wDDGEdzBrC0rSZXF7qPmFxBVYXzoy4a-rZ-vfEEwH3jQQOUWiXvnXZEgGKWtpNmNIKGFoXT2kR7gi4sMDf8LkvMpbWbd-tMraeKPu2UdW43Jg%3D%3D%22%5D%5D',
-            '_ga_HNQ9P9MGZR': 'GS2.1.s1764753512$o1$g1$t1764753822$j56$l0$h0',
+            "_gcl_au": "1.1.749561030.1764753513",
+            "_ga": "GA1.1.301697650.1764753513",
+            "panoramaId_expiry": "1764839942998",
+            "_cc_id": "e66109d69e600fa7d045753fd1c08da7",
+            "__gads": "ID=b19e2af804df34f6:T=1764753544:RT=1764753544:S=ALNI_Mb774vAMtsBLP4s6VQjOoKd3YZNLw",
+            "__gpi": "UID=000012a96e395a7b:T=1764753544:RT=1764753544:S=ALNI_MZ0MxICjdnU5Nq0va2o9Yv6QxaXLg",
+            "__eoi": "ID=a44ab7d32d94bf0e:T=1764753544:RT=1764753544:S=AA-AfjYGzo1PCV-NEccU8ri4Ortc",
+            "cto_bundle": "W0md0V9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHamFUbU44ZXFueXFCZmljeU12MUVwU1drVDdZY0tiSUtPU3ZoRjNuQ05XdDFtUm1NQXJHdWxhRm9aRGJ2SWhrSTZGMUtOcWJ0aG5mSFBwN2k4cDAwSSUyRndWY2VHN2c4VHg1bXBFMjhLU1NvdVJNNDVmR1JXZyUyQlFUY2t2UnAzdTdZQSUzRCUzRA",
+            "cto_bidid": "_RDW419XUUlxMlZTa0RnbElrUGh1c2dISCUyRmF3TTV1U3N5R1BFaTdrdyUyRkxqcVowaDlpTGNHd1F6WFVuZktvZ0VYJTJGUkRBeHFZJTJCU1EycSUyRndKZFBPYWF3Z2pMcnBab0E5cmdGN1BmclVvcmllWERKdzAlM0Q",
+            "cto_dna_bundle": "4-dbil9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHdjJXekw5Z2clMkZTWG9lQVAwRGI1VHZGJTJCZmw3S1BoZlVwSXRrJTJCQTJtY0RDQ3Vnb2NqekZiNE1zM1hEbDFwM0x6RXclM0QlM0Q",
+            "FCCDCF": "%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22477a8ff6-936e-4b5d-80b7-8e13a051ee83%5C%22%2C%5B1764753512%2C120000000%5D%5D%22%5D%5D%5D",
+            "FCNEC": "%5B%5B%22AKsRol944nQG5wkdFdgpzEqQ9bd8wYj_gbM09X2ehrsPjOGDMVqr7wDDGEdzBrC0rSZXF7qPmFxBVYXzoy4a-rZ-vfEEwH3jQQOUWiXvnXZEgGKWtpNmNIKGFoXT2kR7gi4sMDf8LkvMpbWbd-tMraeKPu2UdW43Jg%3D%3D%22%5D%5D",
+            "_ga_HNQ9P9MGZR": "GS2.1.s1764753512$o1$g1$t1764753822$j56$l0$h0",
         }
 
         headers = {
-            'accept': '*/*',
-            'accept-language': 'pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-            'baggage': 'sentry-environment=production,sentry-release=ZMb4MO5Soo7RxrQZhzoTo,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=55c12f9e285e553f442d207357976a77',
-            'cache-control': 'max-age=0',
-            'priority': 'u=1, i',
-            'referer': 'https://www.sofascore.com/pt/',
-            'sec-ch-ua': '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'sentry-trace': '55c12f9e285e553f442d207357976a77-a0f4d4f79b1b5667',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0',
-            'x-captcha': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjQ4Mzk5NDB9.xazTKY9kMYS9TBqnLRltvorpr3ZS7kPWp6aPZhImEQs',
-            'x-requested-with': '7e8cbc',
+            "accept": "*/*",
+            "accept-language": "pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "baggage": "sentry-environment=production,sentry-release=ZMb4MO5Soo7RxrQZhzoTo,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=55c12f9e285e553f442d207357976a77",
+            "cache-control": "max-age=0",
+            "priority": "u=1, i",
+            "referer": "https://www.sofascore.com/pt/",
+            "sec-ch-ua": '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "sentry-trace": "55c12f9e285e553f442d207357976a77-a0f4d4f79b1b5667",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+            "x-captcha": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjQ4Mzk5NDB9.xazTKY9kMYS9TBqnLRltvorpr3ZS7kPWp6aPZhImEQs",
+            "x-requested-with": "7e8cbc",
             # 'cookie': '_gcl_au=1.1.749561030.1764753513; _ga=GA1.1.301697650.1764753513; panoramaId_expiry=1764839942998; _cc_id=e66109d69e600fa7d045753fd1c08da7; __gads=ID=b19e2af804df34f6:T=1764753544:RT=1764753544:S=ALNI_Mb774vAMtsBLP4s6VQjOoKd3YZNLw; __gpi=UID=000012a96e395a7b:T=1764753544:RT=1764753544:S=ALNI_MZ0MxICjdnU5Nq0va2o9Yv6QxaXLg; __eoi=ID=a44ab7d32d94bf0e:T=1764753544:RT=1764753544:S=AA-AfjYGzo1PCV-NEccU8ri4Ortc; cto_bundle=W0md0V9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHamFUbU44ZXFueXFCZmljeU12MUVwU1drVDdZY0tiSUtPU3ZoRjNuQ05XdDFtUm1NQXJHdWxhRm9aRGJ2SWhrSTZGMUtOcWJ0aG5mSFBwN2k4cDAwSSUyRndWY2VHN2c4VHg1bXBFMjhLU1NvdVJNNDVmR1JXZyUyQlFUY2t2UnAzdTdZQSUzRCUzRA; cto_bidid=_RDW419XUUlxMlZTa0RnbElrUGh1c2dISCUyRmF3TTV1U3N5R1BFaTdrdyUyRkxqcVowaDlpTGNHd1F6WFVuZktvZ0VYJTJGUkRBeHFZJTJCU1EycSUyRndKZFBPYWF3Z2pMcnBab0E5cmdGN1BmclVvcmllWERKdzAlM0Q; cto_dna_bundle=4-dbil9IV00lMkJiekx5WnpabUNweHZDZTIlMkZHdjJXekw5Z2clMkZTWG9lQVAwRGI1VHZGJTJCZmw3S1BoZlVwSXRrJTJCQTJtY0RDQ3Vnb2NqekZiNE1zM1hEbDFwM0x6RXclM0QlM0Q; FCCDCF=%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22477a8ff6-936e-4b5d-80b7-8e13a051ee83%5C%22%2C%5B1764753512%2C120000000%5D%5D%22%5D%5D%5D; FCNEC=%5B%5B%22AKsRol944nQG5wkdFdgpzEqQ9bd8wYj_gbM09X2ehrsPjOGDMVqr7wDDGEdzBrC0rSZXF7qPmFxBVYXzoy4a-rZ-vfEEwH3jQQOUWiXvnXZEgGKWtpNmNIKGFoXT2kR7gi4sMDf8LkvMpbWbd-tMraeKPu2UdW43Jg%3D%3D%22%5D%5D; _ga_HNQ9P9MGZR=GS2.1.s1764753512$o1$g1$t1764753822$j56$l0$h0',
         }
 
         def get_json(url):
             cookies = {
-                '_gcl_au': '1.1.1410777148.1764702710',
-                '_ga': 'GA1.1.838785703.1764702710',
-                'g_state': '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
-                '_fbp': 'fb.1.1764703877532.613688672911968169',
-                '_ga_47RNFYWRSH': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-                '_ga_L47NC0LK6B': 'GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0',
-                '_cc_id': '75f94bbc4fb7420f2cf0732add121ee8',
-                'panoramaId_expiry': '1765227822427',
-                'panoramaId': 'f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d',
-                '_li_dcdm_c': '.sofascore.com',
-                '__gads': 'ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A',
-                '__gpi': 'UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg',
-                '__eoi': 'ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU',
-                'cto_bundle': '8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q',
-                'cto_bidid': 'y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE',
-                'FCCDCF': '%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D',
-                'FCNEC': '%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D',
-                '_ga_HNQ9P9MGZR': 'GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
+                "_gcl_au": "1.1.1410777148.1764702710",
+                "_ga": "GA1.1.838785703.1764702710",
+                "g_state": '{"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}',
+                "_fbp": "fb.1.1764703877532.613688672911968169",
+                "_ga_47RNFYWRSH": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+                "_ga_L47NC0LK6B": "GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0",
+                "_cc_id": "75f94bbc4fb7420f2cf0732add121ee8",
+                "panoramaId_expiry": "1765227822427",
+                "panoramaId": "f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d",
+                "_li_dcdm_c": ".sofascore.com",
+                "__gads": "ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A",
+                "__gpi": "UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg",
+                "__eoi": "ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU",
+                "cto_bundle": "8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q",
+                "cto_bidid": "y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE",
+                "FCCDCF": "%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D",
+                "FCNEC": "%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D",
+                "_ga_HNQ9P9MGZR": "GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0",
             }
 
             headers = {
-                'accept': '*/*',
-                'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-                'baggage': 'sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84',
-                'cache-control': 'max-age=0',
-                'priority': 'u=1, i',
-                'referer': 'https://www.sofascore.com/pt/',
-                'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'sec-fetch-dest': 'empty',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-site': 'same-origin',
-                'sentry-trace': 'dbc7b2174ca14e084df635b543355a84-870d2e1df1444643',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-                'x-captcha': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg',
-                'x-requested-with': 'f690cc',
+                "accept": "*/*",
+                "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                "baggage": "sentry-environment=production,sentry-release=0nhNlgUdv5nxc_UsEpdfD,sentry-public_key=d693747a6bb242d9bb9cf7069fb57988,sentry-trace_id=dbc7b2174ca14e084df635b543355a84",
+                "cache-control": "max-age=0",
+                "priority": "u=1, i",
+                "referer": "https://www.sofascore.com/pt/",
+                "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+                "sentry-trace": "dbc7b2174ca14e084df635b543355a84-870d2e1df1444643",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+                "x-captcha": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjUyNzc4MzJ9.kgrvz9xvs1l4rc1FRjbYP65BzCvMh_dea-Yi51yKdOg",
+                "x-requested-with": "f690cc",
                 # 'cookie': '_gcl_au=1.1.1410777148.1764702710; _ga=GA1.1.838785703.1764702710; g_state={"i_l":0,"i_ll":1764703841911,"i_b":"kzI411mdJm/trbDD2qLywikojotJdzMe/hB+FJfeR3g"}; _fbp=fb.1.1764703877532.613688672911968169; _ga_47RNFYWRSH=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _ga_L47NC0LK6B=GS2.1.s1764703877$o1$g1$t1764705250$j60$l0$h0; _cc_id=75f94bbc4fb7420f2cf0732add121ee8; panoramaId_expiry=1765227822427; panoramaId=f24d1c8d12a2bd311529d14ad201a9fb927a8664dc2840c748397f30ee346a7d; _li_dcdm_c=.sofascore.com; __gads=ID=3f9ce32c3b9d171f:T=1764754455:RT=1765191429:S=ALNI_MYr2Vv6qo93NrYYfMx5dQya31ik5A; __gpi=UID=000013174b6ee948:T=1764754455:RT=1765191429:S=ALNI_MYXhI_jzeqSzp7nYT5SEb5uRsUqNg; __eoi=ID=ffb5200279ec53dd:T=1764754455:RT=1765191429:S=AA-Afja_UFR3d-IDkbT7lQk2PjiU; cto_bundle=8ERIz19UVnZOd01BR2xTODglMkZJJTJCY1dCNDBsUXR3ak4wTjVKTER1WnFuYmg2WSUyRlVScXZvQ2VOc3d5Ym42Uzk5c1VMcVZGRERONCUyQjJySFRVVzJLckc4TyUyQnVRTGdhVEdiempxWXQwJTJGaERuZjkxMSUyQkVDWkdEM1JOT1hyZWFmbHlGN3dSU1hrRkZBYW5zMThXaVZIVWElMkJCWm1xYSUyQnclM0QlM0Q; cto_bidid=y9lkfF9SbHdYb3R5Tk1HS2tRR1VlRU53Y2xJTXZWZFliMXVBSmNEMzlTREQyJTJGdFdSJTJGeGFmSDdzWlpqYXpNRENVcDl6Y3REelBoQjJkZzhMNmV6dFA5bndDTTlMQzFZeCUyRjR3TEhzYzNQJTJCNk5IbjRVJTNE; FCCDCF=%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%22b315cfb6-6a31-49d0-adc0-37ac33640eb4%5C%22%2C%5B1764702709%2C46000000%5D%5D%22%5D%5D%5D; FCNEC=%5B%5B%22AKsRol8MsFQcadw0VDOr3KtAkXnyahayOlyhq3J1D3P82XYz0GSuUIEQqcQEE1ja_xb11dIIcwsEeuZUewUywz5h3dJ9TrVhRoYoXVkK8GYxpNr_ZmAgB46lnoBg7I43rY9BRE9YlaJNhiwoQW2Tzu44HNAJwD_YNA%3D%3D%22%5D%5D; _ga_HNQ9P9MGZR=GS2.1.s1765191430$o21$g1$t1765193157$j50$l0$h0',
             }
 
             try:
-                r = requests.get(url, cookies=cookies,headers=headers)
+                r = requests.get(url, cookies=cookies, headers=headers)
                 r.raise_for_status()
                 return r.json()
             except:
@@ -784,9 +830,10 @@ class SofaScore:
             data = get_json(url)
 
             events = [
-                e for e in data["events"]
+                e
+                for e in data["events"]
                 if e["tournament"]["slug"] in allowed_leagues
-                   and e["tournament"]["category"]["slug"] in allowed_countries
+                and e["tournament"]["category"]["slug"] in allowed_countries
             ]
 
             for event in events:
@@ -841,10 +888,9 @@ class SofaScore:
                         "finalizado": (event["status"]["type"] == "finished"),
                         "event_json": event,
                         "stading_json": stadings,
-                    }
+                    },
                 )
                 self.get_analyze_streaks(event["id"])
-
 
     def get_stats(self, event_id=None):
         if event_id:
@@ -860,24 +906,25 @@ class SofaScore:
                 raw = self.get_json(stats_url)
                 event_raw = self.get_json(f"{BASE}/event/{match.external_id}")
                 match.stats_json = raw
-                match.save(update_fields=['stats_json'])
+                match.save(update_fields=["stats_json"])
                 minute = self.calculate_minute(event_raw)
                 stats = self.parse_sofascore_stats(raw)
 
-                last_snap = LiveSnapshot.objects.filter(match=match).order_by('-minute').first()
+                last_snap = (
+                    LiveSnapshot.objects.filter(match=match).order_by("-minute").first()
+                )
 
                 result = self.generate_insights(event_raw, raw, match)
                 result["insights"].extend(self.generate_deep_insights(stats))
 
-
                 snapshot = LiveSnapshot.objects.create(
-                    match=match,
-                    minute=minute,
-                    **stats
+                    match=match, minute=minute, **stats
                 )
 
                 if last_snap:
-                    snapshot.momentum_score = self.calculate_momentum(snapshot, last_snap)
+                    snapshot.momentum_score = self.calculate_momentum(
+                        snapshot, last_snap
+                    )
                     snapshot.save(update_fields=["momentum_score"])
                 else:
                     snapshot.momentum_score = 0
@@ -886,12 +933,18 @@ class SofaScore:
                 last_snapshot = snapshot
 
             except Exception as e:
-                print(f"Erro processando match {match.id}: {e} {e.__traceback__.tb_lineno}")
+                print(
+                    f"Erro processando match {match.id}: {e} {e.__traceback__.tb_lineno}"
+                )
 
         return last_snapshot  # <-- RETORNA O SNAPSHOT
 
-    def get_stadings(self, season_id=None, tournament_id=None, home_id=None, away_id=None):
-        standings_url = f"{BASE}/tournament/{tournament_id}/season/{season_id}/standings/total"
+    def get_stadings(
+        self, season_id=None, tournament_id=None, home_id=None, away_id=None
+    ):
+        standings_url = (
+            f"{BASE}/tournament/{tournament_id}/season/{season_id}/standings/total"
+        )
         standings = self.get_json(standings_url)
 
         home_standing = self.get_team_standing(standings, home_id)
@@ -901,7 +954,7 @@ class SofaScore:
         result["standings"] = {
             "home": home_standing,
             "away": away_standing,
-            "favorito_tabela": self.table_favorite(home_standing, away_standing)
+            "favorito_tabela": self.table_favorite(home_standing, away_standing),
         }
 
         return result
@@ -914,7 +967,7 @@ class SofaScore:
             if event_id:
                 matchs = Match.objects.filter(external_id=event_id).first()
                 matchs.streaks_json = streaks_raw
-                matchs.save(update_fields=['streaks_json'])
+                matchs.save(update_fields=["streaks_json"])
 
             return streaks_analysis
         except:
@@ -936,7 +989,10 @@ class SofaScore:
             # Se você tiver raw_statistics_json no Match:
             try:
                 import json
-                stats_json = json.loads(getattr(match, "raw_statistics_json", "") or "{}")
+
+                stats_json = json.loads(
+                    getattr(match, "raw_statistics_json", "") or "{}"
+                )
             except Exception:
                 stats_json = {}
 
@@ -946,8 +1002,12 @@ class SofaScore:
             home = self._safe_get(event, ["homeTeam", "name"], str(match.home_team))
             away = self._safe_get(event, ["awayTeam", "name"], str(match.away_team))
 
-            hg = self._safe_get(event, ["homeScore", "current"], match.home_team_score or 0)
-            ag = self._safe_get(event, ["awayScore", "current"], match.away_team_score or 0)
+            hg = self._safe_get(
+                event, ["homeScore", "current"], match.home_team_score or 0
+            )
+            ag = self._safe_get(
+                event, ["awayScore", "current"], match.away_team_score or 0
+            )
             total_goals = (hg or 0) + (ag or 0)
 
             # ---------------------------------------------------------------------
@@ -996,12 +1056,24 @@ class SofaScore:
             # ---------------------------------------------------------------------
             # xG, ATAQUES, FINALIZAÇÕES, ESCANTEIOS, ETC (stats_json)
             # ---------------------------------------------------------------------
-            xg_home, xg_away = self._extract_stat_from_stats_json(stats_json, "expectedGoals", 0.0)
-            attacks_home, attacks_away = self._extract_stat_from_stats_json(stats_json, "attacks", 0.0)
-            dang_att_home, dang_att_away = self._extract_stat_from_stats_json(stats_json, "dangerousAttacks", 0.0)
-            shots_home, shots_away = self._extract_stat_from_stats_json(stats_json, "shotsTotal", 0.0)
-            shots_on_home, shots_on_away = self._extract_stat_from_stats_json(stats_json, "shotsOnTarget", 0.0)
-            corners_home, corners_away = self._extract_stat_from_stats_json(stats_json, "cornerKicks", 0.0)
+            xg_home, xg_away = self._extract_stat_from_stats_json(
+                stats_json, "expectedGoals", 0.0
+            )
+            attacks_home, attacks_away = self._extract_stat_from_stats_json(
+                stats_json, "attacks", 0.0
+            )
+            dang_att_home, dang_att_away = self._extract_stat_from_stats_json(
+                stats_json, "dangerousAttacks", 0.0
+            )
+            shots_home, shots_away = self._extract_stat_from_stats_json(
+                stats_json, "shotsTotal", 0.0
+            )
+            shots_on_home, shots_on_away = self._extract_stat_from_stats_json(
+                stats_json, "shotsOnTarget", 0.0
+            )
+            corners_home, corners_away = self._extract_stat_from_stats_json(
+                stats_json, "cornerKicks", 0.0
+            )
 
             # Se você já tiver MatchStats preenchido, pode fazer um override:
             try:
@@ -1029,17 +1101,16 @@ class SofaScore:
                 xg_pm = xg / minute
 
                 # pesos arbitrários – você pode tunar depois
-                score = (
-                    att_pm * 0.8 +
-                    dang_pm * 1.4 +
-                    shots_pm * 2.0 +
-                    xg_pm * 20.0
-                )
+                score = att_pm * 0.8 + dang_pm * 1.4 + shots_pm * 2.0 + xg_pm * 20.0
                 # clamp 0–100
                 return max(0.0, min(score, 100.0))
 
-            pressure_home = calc_pressao(attacks_home, dang_att_home, shots_home, xg_home, minute or 1)
-            pressure_away = calc_pressao(attacks_away, dang_att_away, shots_away, xg_away, minute or 1)
+            pressure_home = calc_pressao(
+                attacks_home, dang_att_home, shots_home, xg_home, minute or 1
+            )
+            pressure_away = calc_pressao(
+                attacks_away, dang_att_away, shots_away, xg_away, minute or 1
+            )
 
             # métrica única de momento
             momentum_raw = pressure_home - pressure_away
@@ -1068,7 +1139,9 @@ class SofaScore:
             def build_team_strength(team, as_home=True, as_away=True):
                 qs = Match.objects.filter(finalizado=True)
                 if as_home:
-                    qs = qs.filter(home_team=team) | Match.objects.filter(away_team=team, finalizado=True)
+                    qs = qs.filter(home_team=team) | Match.objects.filter(
+                        away_team=team, finalizado=True
+                    )
                 else:
                     qs = qs.filter(home_team=team, finalizado=True)
 
@@ -1083,11 +1156,11 @@ class SofaScore:
 
                 for m in qs:
                     if m.home_team == team:
-                        s = (m.home_team_score or 0)
-                        c = (m.away_team_score or 0)
+                        s = m.home_team_score or 0
+                        c = m.away_team_score or 0
                     else:
-                        s = (m.away_team_score or 0)
-                        c = (m.home_team_score or 0)
+                        s = m.away_team_score or 0
+                        c = m.home_team_score or 0
                     total_scored += s
                     total_conceded += c
                     count += 1
@@ -1099,8 +1172,16 @@ class SofaScore:
                 avg_conceded = total_conceded / count
 
                 # força relativa vs média da liga
-                attack_strength = (avg_scored / (league_avg_goals / 2)) if league_avg_goals > 0 else 1.0
-                defense_strength = (avg_conceded / (league_avg_goals / 2)) if league_avg_goals > 0 else 1.0
+                attack_strength = (
+                    (avg_scored / (league_avg_goals / 2))
+                    if league_avg_goals > 0
+                    else 1.0
+                )
+                defense_strength = (
+                    (avg_conceded / (league_avg_goals / 2))
+                    if league_avg_goals > 0
+                    else 1.0
+                )
 
                 # clamp para não explodir
                 attack_strength = max(0.5, min(attack_strength, 1.8))
@@ -1220,7 +1301,9 @@ class SofaScore:
 
             insights.append(f"Liga com média de {league_avg_goals:.2f} gols por jogo.")
             insights.append(f"xG: {home} {xg_home:.2f} x {xg_away:.2f} {away}.")
-            insights.append(f"Pressão: {home} {pressure_home:.1f} x {pressure_away:.1f} {away}.")
+            insights.append(
+                f"Pressão: {home} {pressure_home:.1f} x {pressure_away:.1f} {away}."
+            )
 
             if gol_recente:
                 insights.append("Gol recente — momento de alta volatilidade.")
@@ -1251,12 +1334,10 @@ class SofaScore:
                 "minute": minute,
                 "gol_recente": gol_recente,
                 "tempo_desde_gol": tempo_desde_gol,
-
                 "probabilities": prob,
                 "odds": odds,
                 "projected_score": projected_score,
                 "insights": insights,
-
                 "recommendation": recommendation,
                 "confidence": confidence,
             }
@@ -1288,7 +1369,8 @@ class SofaScore:
         def ratio(v):
             if "/" in v:
                 a, b = v.split("/")
-                if b == "0": return 0
+                if b == "0":
+                    return 0
                 return int(a) / int(b)
             return float(v) if v.isdigit() else 0
 
@@ -1411,10 +1493,7 @@ class SofaScore:
             if impact[k] < -25:
                 impact[k] = -25
 
-        return {
-            "insights": insights,
-            "impact": impact
-        }
+        return {"insights": insights, "impact": impact}
 
     def analyze_live_snapshots(self, match, window=15):
         """
@@ -1422,7 +1501,9 @@ class SofaScore:
         Retorna insights sobre gols, escanteios e disciplina.
         """
 
-        snapshots = LiveSnapshot.objects.filter(match=match).order_by('-minute')[:window]
+        snapshots = LiveSnapshot.objects.filter(match=match).order_by("-minute")[
+            :window
+        ]
         if not snapshots:
             return {"insights": [], "analysis": {}, "suggestions": []}
 
@@ -1444,11 +1525,18 @@ class SofaScore:
         first = snapshots[0]
         last = snapshots[-1]
 
-        delta_corners = (last.corners_home + last.corners_away) - (first.corners_home + first.corners_away)
+        delta_corners = (last.corners_home + last.corners_away) - (
+            first.corners_home + first.corners_away
+        )
         delta_shots = (last.shots_total_home + last.shots_total_away) - (
-                    first.shots_total_home + first.shots_total_away)
-        delta_big = (last.big_chances_home + last.big_chances_away) - (first.big_chances_home + first.big_chances_away)
-        delta_fouls = (last.fouls_home + last.fouls_away) - (first.fouls_home + first.fouls_away)
+            first.shots_total_home + first.shots_total_away
+        )
+        delta_big = (last.big_chances_home + last.big_chances_away) - (
+            first.big_chances_home + first.big_chances_away
+        )
+        delta_fouls = (last.fouls_home + last.fouls_away) - (
+            first.fouls_home + first.fouls_away
+        )
 
         # momentum
         momentum = last.momentum_score
@@ -1460,39 +1548,53 @@ class SofaScore:
         # ---- ESCANTEIOS ----
         if delta_corners >= 2:
             insights.append(
-                f"Nos últimos {window} minutos saíram {delta_corners} escanteios — forte tendência de mais cantos.")
+                f"Nos últimos {window} minutos saíram {delta_corners} escanteios — forte tendência de mais cantos."
+            )
             suggestions.append("Over escanteios em linha ao vivo")
 
         if total_corners >= 8 and last.minute < 70:
-            insights.append(f"O jogo já tem {total_corners} escanteios — ritmo forte para Over 10.5.")
+            insights.append(
+                f"O jogo já tem {total_corners} escanteios — ritmo forte para Over 10.5."
+            )
             suggestions.append("Over 10.5 escanteios")
 
         # ---- GOLS ----
         if delta_shots >= 5:
-            insights.append(f"Volume ofensivo crescente: {delta_shots} finalizações recentes — aumenta chance de gol.")
+            insights.append(
+                f"Volume ofensivo crescente: {delta_shots} finalizações recentes — aumenta chance de gol."
+            )
             suggestions.append("Gol próximo (Over 0.5 live)")
 
         if delta_big >= 1:
-            insights.append(f"Gerou {delta_big} grande chance nos últimos minutos — risco altíssimo de gol.")
+            insights.append(
+                f"Gerou {delta_big} grande chance nos últimos minutos — risco altíssimo de gol."
+            )
             suggestions.append("Gol no próximo trecho do jogo")
 
         if last.xg_home + last.xg_away >= 2.5:
             insights.append(
-                f"xG acumulado muito alto ({last.xg_home + last.xg_away:.2f}) — jogo aberto com tendência de gol.")
+                f"xG acumulado muito alto ({last.xg_home + last.xg_away:.2f}) — jogo aberto com tendência de gol."
+            )
             suggestions.append("Over em gols")
 
         # ---- DISCIPLINA (CARTÕES) ----
         if delta_fouls >= 5:
-            insights.append(f"Jogo ficou mais físico: {delta_fouls} faltas recentes — tendência de cartão.")
+            insights.append(
+                f"Jogo ficou mais físico: {delta_fouls} faltas recentes — tendência de cartão."
+            )
             suggestions.append("Cartão nos próximos minutos")
 
         if total_yellow >= 4 and last.minute < 75:
-            insights.append(f"{total_yellow} cartões já aplicados — risco elevado de mais disciplina.")
+            insights.append(
+                f"{total_yellow} cartões já aplicados — risco elevado de mais disciplina."
+            )
             suggestions.append("Over cartões")
 
         # ---- MOMENTUM ----
         if momentum > 5:
-            insights.append("Mandante domina o momento — tendência de pressão e oportunidades.")
+            insights.append(
+                "Mandante domina o momento — tendência de pressão e oportunidades."
+            )
         elif momentum < -5:
             insights.append("Visitante cresceu no jogo — possível virada ou gol fora.")
 
@@ -1514,5 +1616,7 @@ class SofaScore:
         return {
             "analysis": analysis,
             "insights": insights,
-            "suggestions": list(dict.fromkeys(suggestions))  # remove duplicatas mantendo ordem
+            "suggestions": list(
+                dict.fromkeys(suggestions)
+            ),  # remove duplicatas mantendo ordem
         }

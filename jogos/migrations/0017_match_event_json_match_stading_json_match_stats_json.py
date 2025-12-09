@@ -6,23 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('jogos', '0016_match_away_id_match_home_id_match_season_ids_and_more'),
+        ("jogos", "0016_match_away_id_match_home_id_match_season_ids_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='match',
-            name='event_json',
+            model_name="match",
+            name="event_json",
             field=models.JSONField(blank=True, default=dict),
         ),
         migrations.AddField(
-            model_name='match',
-            name='stading_json',
+            model_name="match",
+            name="stading_json",
             field=models.JSONField(blank=True, default=dict),
         ),
         migrations.AddField(
-            model_name='match',
-            name='stats_json',
+            model_name="match",
+            name="stats_json",
             field=models.JSONField(blank=True, default=dict),
         ),
     ]

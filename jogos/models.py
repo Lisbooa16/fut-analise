@@ -12,9 +12,7 @@ class League(models.Model):
 
 
 class Season(models.Model):
-    league = models.ForeignKey(
-        League, on_delete=models.CASCADE, related_name="seasons"
-    )
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name="seasons")
     name = models.CharField(max_length=255)
     external_id = models.IntegerField(null=True, blank=True)  # SofaScore seasonId
 
@@ -23,9 +21,7 @@ class Season(models.Model):
 
 
 class Team(models.Model):
-    league = models.ForeignKey(
-        League, on_delete=models.CASCADE, related_name="teams"
-    )
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name="teams")
     name = models.CharField(max_length=255)
     external_id = models.IntegerField(null=True, blank=True)  # SofaScore teamId
 
@@ -34,9 +30,7 @@ class Team(models.Model):
 
 
 class Match(models.Model):
-    season = models.ForeignKey(
-        Season, on_delete=models.CASCADE, related_name="matches"
-    )
+    season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="matches")
     external_id = models.IntegerField(unique=True)  # eventId do SofaScore
     slug = models.CharField(max_length=255, null=True, blank=True)
 
@@ -74,14 +68,14 @@ class Match(models.Model):
     def __str__(self):
         return f"{self.home_team} vs {self.away_team}"
 
+
 class RunningToday(models.Model):
     rodou = models.BooleanField(default=False)
     data = models.DateField(db_index=True)
 
+
 class MatchStats(models.Model):
-    match = models.OneToOneField(
-        Match, on_delete=models.CASCADE, related_name="stats"
-    )
+    match = models.OneToOneField(Match, on_delete=models.CASCADE, related_name="stats")
 
     # --- Estatísticas SofaScore
     xg_home = models.FloatField(default=0)
@@ -113,17 +107,11 @@ class MatchStats(models.Model):
     analyzed_at = models.DateTimeField(default=now)
 
     team_home = models.ForeignKey(
-        Team,
-        on_delete=models.CASCADE,
-        related_name='stats_home',
-        null=True, blank=True
+        Team, on_delete=models.CASCADE, related_name="stats_home", null=True, blank=True
     )
 
     team_away = models.ForeignKey(
-        Team,
-        on_delete=models.CASCADE,
-        related_name='stats_away',
-        null=True, blank=True
+        Team, on_delete=models.CASCADE, related_name="stats_away", null=True, blank=True
     )
 
     score_home = models.IntegerField(null=True, blank=True)
@@ -134,9 +122,7 @@ class MatchStats(models.Model):
 
 
 class TeamStreak(models.Model):
-    match = models.ForeignKey(
-        Match, on_delete=models.CASCADE, related_name="streaks"
-    )
+    match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="streaks")
 
     group = models.CharField(max_length=50)  # general / head2head
     name = models.CharField(max_length=255)

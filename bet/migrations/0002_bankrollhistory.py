@@ -1,28 +1,46 @@
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('bet', '0001_initial'),
+        ("bet", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='BankrollHistory',
+            name="BankrollHistory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('status', models.IntegerField(choices=[(1, 'Depósito'), (2, 'Retirada')])),
-                ('amount', models.DecimalField(decimal_places=2, max_digits=12)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('note', models.CharField(blank=True, max_length=255, null=True)),
-                ('bankroll', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='history', to='bet.bankroll')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "status",
+                    models.IntegerField(choices=[(1, "Depósito"), (2, "Retirada")]),
+                ),
+                ("amount", models.DecimalField(decimal_places=2, max_digits=12)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("note", models.CharField(blank=True, max_length=255, null=True)),
+                (
+                    "bankroll",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="history",
+                        to="bet.bankroll",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Movimentação da Banca',
-                'verbose_name_plural': 'Histórico da Banca',
-                'ordering': ['-created_at'],
+                "verbose_name": "Movimentação da Banca",
+                "verbose_name_plural": "Histórico da Banca",
+                "ordering": ["-created_at"],
             },
         ),
     ]

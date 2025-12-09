@@ -1,12 +1,14 @@
-from celery import shared_task
-from django.utils import timezone
 from datetime import timedelta
 
+from celery import shared_task
+from django.utils import timezone
+
 from get_events import SofaScore
+
 from .models import Match
 
-
 # from django.forms.models import model_to_dict # Geralmente não precisamos disso no celery, a menos que vá salvar em log JSON
+
 
 @shared_task
 def process_match_snapshot(event_id):
@@ -59,7 +61,7 @@ def dispatch_todays_matches():
     # Filtrando as partidas
     matches = Match.objects.filter(
         date__date=now.date(),  # Era 'start_time', seu model usa 'date'
-        finalizado=False  # Era 'finished', seu model usa 'finalizado'
+        finalizado=False,  # Era 'finished', seu model usa 'finalizado'
     )
 
     if not matches.exists():

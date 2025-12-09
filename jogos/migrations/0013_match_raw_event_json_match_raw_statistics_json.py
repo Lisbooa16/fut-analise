@@ -6,18 +6,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('jogos', '0012_matchstats_score_away_matchstats_score_home_and_more'),
+        ("jogos", "0012_matchstats_score_away_matchstats_score_home_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='match',
-            name='raw_event_json',
+            model_name="match",
+            name="raw_event_json",
             field=models.JSONField(blank=True, default=dict),
         ),
         migrations.AddField(
-            model_name='match',
-            name='raw_statistics_json',
+            model_name="match",
+            name="raw_statistics_json",
             field=models.JSONField(blank=True, default=dict),
         ),
     ]

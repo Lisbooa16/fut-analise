@@ -6,16 +6,24 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('jogos', '0017_match_event_json_match_stading_json_match_stats_json'),
+        ("jogos", "0017_match_event_json_match_stading_json_match_stats_json"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='RunningToday',
+            name="RunningToday",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('rodou', models.BooleanField(default=False)),
-                ('data', models.CharField(max_length=255)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("rodou", models.BooleanField(default=False)),
+                ("data", models.CharField(max_length=255)),
             ],
         ),
     ]

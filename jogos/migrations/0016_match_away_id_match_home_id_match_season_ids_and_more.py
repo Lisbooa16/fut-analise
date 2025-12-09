@@ -6,31 +6,31 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('jogos', '0015_alter_livesnapshot_options_and_more'),
+        ("jogos", "0015_alter_livesnapshot_options_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='match',
-            name='away_id',
+            model_name="match",
+            name="away_id",
             field=models.CharField(default=1, max_length=255),
             preserve_default=False,
         ),
         migrations.AddField(
-            model_name='match',
-            name='home_id',
+            model_name="match",
+            name="home_id",
             field=models.CharField(default=1, max_length=255),
             preserve_default=False,
         ),
         migrations.AddField(
-            model_name='match',
-            name='season_ids',
+            model_name="match",
+            name="season_ids",
             field=models.CharField(default=4, max_length=255),
             preserve_default=False,
         ),
         migrations.AddField(
-            model_name='match',
-            name='tournament_id',
+            model_name="match",
+            name="tournament_id",
             field=models.CharField(default=1, max_length=255),
             preserve_default=False,
         ),
