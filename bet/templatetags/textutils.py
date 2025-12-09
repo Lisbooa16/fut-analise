@@ -1,4 +1,4 @@
-# betting/templatetags/textutils.py
+                                   
 from django import template
 
 register = template.Library()
@@ -18,5 +18,5 @@ def hide_analysis_errors(text: str) -> str:
         return ""
     lower = str(text).strip().lower()
     if any(p in lower for p in ERROR_PATTERNS):
-        return ""   # esconde
+        return ""            
     return text
