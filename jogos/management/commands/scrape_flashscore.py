@@ -695,7 +695,7 @@ class Command(BaseCommand):
         #     f"{year}-{month:02d}-{day:02d}"
         #     for day in range(1, num_days + 1)
         # ]
-        date = ["2025-12-09"]
+        date = ["2025-12-11"]
 
         for c in date:
             url = f"{BASE}/sport/football/scheduled-events/{c}"
@@ -716,6 +716,10 @@ class Command(BaseCommand):
                 "trendyol-super-lig",
                 "coppa-italia",
                 "copa-del-rey",
+                "uefa-champions-league",
+                "copa-do-brasil",
+                "uefa-europa-league",
+                "uefa-conference-league",
             }
 
             allowed_countries = {
@@ -729,6 +733,10 @@ class Command(BaseCommand):
                 "turkey",
                 "italy",
                 "spain",
+                "europe",
+                "brazil",
+                "europe",
+                "europe",
             }
             try:
                 events = [

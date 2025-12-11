@@ -263,6 +263,7 @@
                 </div>
             </div>
             {% endif %}
+            <div id="odds-card-container"></div>
 
             {% if streak_analysis %}
             <div class="card bg-dark border border-warning border-opacity-25">
@@ -590,6 +591,71 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .catch(err => console.error("Live Update Error:", err));
     }
+    function fetchPreMatchOdds() {
+        const url = `/matches/${MATCH_ID}/odds/featured/`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                console.log("ODDS:", data);
+
+                // Pega exatamente o mercado 1x2 igual está no JSON
+                const odds = data.markets["1x2"];
+
+                if (!odds) {
+                    console.error("Mercado 1x2 não encontrado:", data.markets);
+                    return;
+                }
+
+                const html = `
+                    <div class="card bg-dark border border-success border-opacity-25 mb-4 shadow-sm">
+                        <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                            <h6 class="mb-0 text-success fw-bold text-uppercase">
+                                <i class="bi bi-cash-coin me-2"></i> Odds (Pré-Jogo)
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="row g-2 text-white">
+
+                                <div class="col-4">
+                                    <a href="/matches/${MATCH_ID}/bet/?market=home&odd=${odds.home.odd}"
+                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
+                                        <small class="text-muted d-block">Home</small>
+                                        <span class="fw-bold">${odds.home.odd}</span><br>
+                                        <small class="text-success">${(odds.home.prob * 100).toFixed(1)}%</small>
+                                    </a>
+                                </div>
+
+                                <div class="col-4">
+                                    <a href="/matches/${MATCH_ID}/bet/?market=draw&odd=${odds.draw.odd}"
+                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
+                                        <small class="text-muted d-block">Empate</small>
+                                        <span class="fw-bold">${odds.draw.odd}</span><br>
+                                        <small class="text-warning">${(odds.draw.prob * 100).toFixed(1)}%</small>
+                                    </a>
+                                </div>
+
+                                <div class="col-4">
+                                    <a href="/matches/${MATCH_ID}/bet/?market=away&odd=${odds.away.odd}"
+                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
+                                        <small class="text-muted d-block">Away</small>
+                                        <span class="fw-bold">${odds.away.odd}</span><br>
+                                        <small class="text-danger">${(odds.away.prob * 100).toFixed(1)}%</small>
+                                    </a>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById("odds-card-container").innerHTML = html;
+            })
+            .catch(err => console.error("Erro ao carregar odds:", err));
+    }
+
+    // Executa 1 única vez ao carregar a página:
+    fetchPreMatchOdds();
 
     // Init
     fetchLiveStats();

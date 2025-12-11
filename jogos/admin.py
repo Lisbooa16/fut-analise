@@ -209,220 +209,186 @@ def gerar_analise_v3(match):
     tournament = event.get("tournament", {}).get("name", "Desconhecido")
     status = event.get("status", {}).get("description", "N/A")
 
-    # ---------- Separar streaks por time ----------
+    # ---------- Separar streaks ----------
     home_streaks = [s for s in general if s.get("team") == "home"]
     away_streaks = [s for s in general if s.get("team") == "away"]
 
-    # ---------- Scores de momento ----------
-    home_score = score_from_streaks(home_streaks)
-    away_score = score_from_streaks(away_streaks)
+    # ---------- Pontuação bruta ----------
+    raw_home_score = score_from_streaks(home_streaks)
+    raw_away_score = score_from_streaks(away_streaks)
 
-    # Home advantage leve
-    home_score_adj = home_score + 1.0
-    away_score_adj = away_score
+    # ---------- Normalização (ESSENCIAL!) ----------
+    # Converte score para uma escala [-1.5, +1.5]
+    def normalize_score(x):
+        return max(-1.5, min(1.5, x / 3))
 
-    # Softmax simples para probabilidades de resultado (home/draw/away)
-    eh = math.exp(home_score_adj)
-    ea = math.exp(away_score_adj)
-    # Empate como "meio do caminho"
-    ed = math.exp((home_score_adj + away_score_adj) / 2 * 0.6)
+    home_score = normalize_score(raw_home_score) + 0.2  # leve vantagem de mando
+    away_score = normalize_score(raw_away_score)
+
+    stronger = home_name if home_score > away_score else away_name
+
+    # ---------- Softmax temperado (calibrado) ----------
+    temperature = 2.2  # controla suavidade do softmax
+    eh = math.exp(home_score / temperature)
+    ed = math.exp((home_score + away_score) / 2 / temperature)
+    ea = math.exp(away_score / temperature)
 
     total = eh + ed + ea
     p_home = eh / total
     p_draw = ed / total
     p_away = ea / total
 
-    stronger = home_name if home_score_adj > away_score_adj else away_name
-
-    # ---------- Probabilidades de mercados específicos ----------
-
-    # Over/Under 2.5
+    # ---------- Probabilidades Over/Under ----------
     recent_over = max(
-        [
-            parse_ratio(s["value"])
-            for s in general
-            if "more than 2.5 goals" in s.get("name", "").lower()
-        ]
-        or [0.0]
+        [parse_ratio(s["value"]) for s in general if "2.5" in s["name"].lower()] or [0]
     )
     h2h_over = max(
-        [
-            parse_ratio(s["value"])
-            for s in h2h
-            if "more than 2.5 goals" in s.get("name", "").lower()
-        ]
-        or [0.0]
+        [parse_ratio(s["value"]) for s in h2h if "2.5" in s["name"].lower()] or [0]
     )
     h2h_under = max(
-        [
-            parse_ratio(s["value"])
-            for s in h2h
-            if "less than 2.5 goals" in s.get("name", "").lower()
-        ]
-        or [0.0]
+        [parse_ratio(s["value"]) for s in h2h if "less than 2.5" in s["name"].lower()]
+        or [0]
     )
 
-    prob_over25 = 0.65 * recent_over + 0.25 * h2h_over + 0.2 * (1 - h2h_under)
-    prob_over25 = max(0.0, min(1.0, prob_over25))
+    # Novo peso — mais realista:
+    prob_over25 = 0.45 * recent_over + 0.45 * h2h_over + 0.10 * (1 - h2h_under)
+    prob_over25 = max(0.05, min(0.95, prob_over25))
     prob_under25 = 1 - prob_over25
 
-    # BTTS
+    # ---------- BTTS ----------
     recent_btts = max(
-        [
-            parse_ratio(s["value"])
-            for s in general
-            if "both teams scoring" in s.get("name", "").lower()
-        ]
-        or [0.0]
+        [parse_ratio(s["value"]) for s in general if "both teams" in s["name"].lower()]
+        or [0]
     )
     h2h_btts = max(
-        [
-            parse_ratio(s["value"])
-            for s in h2h
-            if "both teams scoring" in s.get("name", "").lower()
-        ]
-        or [0.0]
+        [parse_ratio(s["value"]) for s in h2h if "both teams" in s["name"].lower()]
+        or [0]
     )
-    prob_btts = 0.7 * recent_btts + 0.3 * h2h_btts
-    prob_btts = max(0.0, min(1.0, prob_btts))
 
-    # Quem marca primeiro
+    prob_btts = 0.5 * recent_btts + 0.5 * h2h_btts
+    prob_btts = max(0.05, min(0.95, prob_btts))
+
+    # ---------- Quem marca primeiro ----------
     away_first = max(
         [
             parse_ratio(s["value"])
             for s in general
-            if s.get("team") == "away" and "first to score" in s.get("name", "").lower()
+            if s.get("team") == "away" and "first to score" in s["name"].lower()
         ]
-        or [0.0]
+        or [0]
     )
     home_first = max(
         [
             parse_ratio(s["value"])
             for s in general
-            if s.get("team") == "home" and "first to score" in s.get("name", "").lower()
+            if s.get("team") == "home" and "first to score" in s["name"].lower()
         ]
-        or [0.0]
+        or [0]
     )
     home_first_concede = max(
         [
             parse_ratio(s["value"])
             for s in general
-            if s.get("team") == "home"
-            and "first to concede" in s.get("name", "").lower()
+            if s.get("team") == "home" and "first to concede" in s["name"].lower()
         ]
-        or [0.0]
+        or [0]
     )
 
-    # Heurística: time que mais marca primeiro + adversário que mais sofre
-    raw_away_first_prob = (
-        0.6 * away_first + 0.2 * (1 - home_first) + 0.2 * home_first_concede
+    # Nova fórmula calibrada:
+    raw_away_first = (
+        0.55 * away_first + 0.25 * home_first_concede + 0.20 * (1 - home_first)
     )
-    raw_away_first_prob = max(0.0, min(1.0, raw_away_first_prob))
-
-    prob_away_first = raw_away_first_prob
+    prob_away_first = max(0.10, min(0.90, raw_away_first))
     prob_home_first = 1 - prob_away_first
 
     # ---------- Contradições ----------
     contradicao_h2h_gols = h2h_under >= 0.7 and prob_over25 >= 0.6
 
-    # ---------- Insights textuais ----------
+    # ---------- Insights ----------
     insights = []
 
-    if away_score_adj > home_score_adj + 1:
+    # momento
+    if away_score > home_score + 0.6:
         insights.append(f"{away_name} chega em fase claramente superior.")
-    elif away_score_adj > home_score_adj:
-        insights.append(f"{away_name} chega em leve melhor fase que {home_name}.")
-    elif home_score_adj > away_score_adj + 1:
+    elif away_score > home_score:
+        insights.append(f"{away_name} chega em leve melhor fase.")
+    elif home_score > away_score + 0.6:
         insights.append(f"{home_name} chega em fase claramente superior.")
     else:
         insights.append("Momento relativamente equilibrado entre as equipes.")
 
+    # padrões
     if prob_btts >= 0.65:
         insights.append("Boa tendência para *Ambas Marcam (BTTS)*.")
     if prob_over25 >= 0.65:
         insights.append("Boa tendência de *Over 2.5 gols*.")
     if prob_under25 >= 0.65:
-        insights.append("Jogo com viés para *Under 2.5 gols*.")
-    if prob_away_first >= 0.6:
+        insights.append("Tendência para *Under 2.5 gols*.")
+    if prob_away_first >= 0.60:
         insights.append(f"Tendência de {away_name} marcar o primeiro gol.")
-    elif prob_home_first >= 0.6:
+    elif prob_home_first >= 0.60:
         insights.append(f"Tendência de {home_name} marcar o primeiro gol.")
 
     if contradicao_h2h_gols:
         insights.append(
-            "O histórico direto indica poucos gols, mas o momento recente sugere um jogo mais aberto."
+            "H2H indica poucos gols, mas o momento recente sugere jogo mais aberto."
         )
 
-    # Sugestões de mercados fortes (não é recomendação financeira)
+    # ---------- Sugestões ----------
     sugestoes = []
-    if prob_btts >= 0.7:
-        sugestoes.append(f"BTTS – {prob_label(prob_btts)}")
-    if prob_over25 >= 0.7:
+    if prob_over25 > 0.70:
         sugestoes.append(f"Over 2.5 gols – {prob_label(prob_over25)}")
-    if prob_under25 >= 0.7:
-        sugestoes.append(f"Under 2.5 gols – {prob_label(prob_under25)}")
-    if p_away >= 0.5:
-        sugestoes.append(f"{away_name} DNB (empate devolve) – {prob_label(p_away)}")
-    elif p_home >= 0.5:
-        sugestoes.append(f"{home_name} DNB (empate devolve) – {prob_label(p_home)}")
+    if prob_btts > 0.70:
+        sugestoes.append(f"BTTS – {prob_label(prob_btts)}")
+    if p_away > 0.55:
+        sugestoes.append(f"{away_name} DNB – {prob_label(p_away)}")
+    elif p_home > 0.55:
+        sugestoes.append(f"{home_name} DNB – {prob_label(p_home)}")
 
-    # ---------- Texto resumo p/ Telegram ----------
+    # ---------- RESUMO FINAL ----------
     resumo = f"""
-        *📊 Análise Automática V3*
+    📊 *Análise Automática V3.1 (calibrada)*
 
         *{home_name}* vs *{away_name}*
         Campeonato: *{tournament}*
         Status: `{status}`
 
-        *Força do Momento* (heurística)
-        - {home_name}: `{home_score_adj:.2f}`
-        - {away_name}: `{away_score_adj:.2f}`
-        - 🔥 Mais forte no momento: *{stronger}*
+        *Força do Momento*
+        - {home_name}: `{home_score:.2f}`
+        - {away_name}: `{away_score:.2f}`
+        🔥 Mais forte: *{stronger}*
 
-        *Probabilidades (qualitativas)*
+        *Probabilidades*
         - Vitória {home_name}: {prob_label(p_home)}
         - Empate: {prob_label(p_draw)}
         - Vitória {away_name}: {prob_label(p_away)}
 
-        - Over 2.5 gols: {prob_label(prob_over25)}
-        - Under 2.5 gols: {prob_label(prob_under25)}
-        - Ambas Marcam (BTTS): {prob_label(prob_btts)}
-        - {home_name} marca primeiro: {prob_label(prob_home_first)}
-        - {away_name} marca primeiro: {prob_label(prob_away_first)}
+        - Over 2.5: {prob_label(prob_over25)}
+        - Under 2.5: {prob_label(prob_under25)}
+        - BTTS: {prob_label(prob_btts)}
+        - Primeiro gol {home_name}: {prob_label(prob_home_first)}
+        - Primeiro gol {away_name}: {prob_label(prob_away_first)}
 
         *Escanteios*
         - Over 10.5: {prob_label(esc["prob_over10"])}
         - Under 10.5: {prob_label(esc["prob_under10"])}
 
-        *Insights de Escanteios*
-        {chr(10).join(f"- {i}" for i in esc["insights"]) or "- Sem dados relevantes"}
+        *Insights*
+        {chr(10).join(f"- {i}" for i in insights)}
 
-        *Mercados de Escanteios*
-        {chr(10).join(f"- {s}" for s in esc["sugestoes"]) or "- Nenhum mercado com edge claro"}
-
-        *Insights principais*
-        {chr(10).join(f"- {i}" for i in insights) or "- (sem insights relevantes)"}
-
-        *Mercados com boa leitura* (não é recomendação de aposta):
-        {chr(10).join(f"- {s}" for s in sugestoes) or "- Nenhum mercado com edge claro pelas estatísticas."}
+        *Mercados fortes* (não é recomendação)
+        {chr(10).join(f"- {s}" for s in sugestoes) or "- Nenhum mercado forte."}
     """.strip()
 
     return {
-        "home_score": home_score_adj,
-        "away_score": away_score_adj,
+        "home_score": home_score,
+        "away_score": away_score,
         "stronger": stronger,
-        "prob_result": {
-            "home_win": p_home,
-            "draw": p_draw,
-            "away_win": p_away,
-        },
+        "prob_result": {"home_win": p_home, "draw": p_draw, "away_win": p_away},
         "prob_over25": prob_over25,
         "prob_under25": prob_under25,
         "prob_btts": prob_btts,
-        "prob_first_goal": {
-            "home": prob_home_first,
-            "away": prob_away_first,
-        },
+        "prob_first_goal": {"home": prob_home_first, "away": prob_away_first},
         "contradicao_h2h_gols": contradicao_h2h_gols,
         "insights": insights,
         "sugestoes": sugestoes,
@@ -575,6 +541,7 @@ class MatchAdmin(admin.ModelAdmin):
         "gerar_analise_e_enviar",
         "action_gerar_analise_v2",
         "gerar_analise_v3_action",
+        "set_nao_finalizado",
     ]
 
     list_filter = (
@@ -713,9 +680,21 @@ class MatchAdmin(admin.ModelAdmin):
             level=messages.SUCCESS,
         )
 
+    def set_nao_finalizado(self, request, queryset):
+        for match in queryset:
+            match.finalizado = False
+            match.save(update_fields=["finalizado"])
+
+        self.message_user(
+            request,
+            f"Não finalizado jogo(s).",
+            level=messages.SUCCESS,
+        )
+
     gerar_analise_v3_action.short_description = (
         "Gerar análise V3 + enviar para o Telegram"
     )
+    set_nao_finalizado.short_description = "Não Finalizada"
 
     action_gerar_analise_v2.short_description = (
         "Gerar análise avançada V2 + enviar Telegram"

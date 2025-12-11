@@ -17,13 +17,16 @@ allowed_leagues = {
     "premier-league",
     "laliga",
     "serie-a",
-    "conmebol-libertadore",
+    "conmebol-libertadores",
     "brasileirao-serie-a",
     "ligue-1",
     "bundesliga",
     "trendyol-super-lig",
-    "primera-lpf-clausura-playoffs",
+    "coppa-italia",
+    "copa-del-rey",
+    "uefa-champions-league",
 }
+
 allowed_countries = {
     "england",
     "spain",
@@ -33,7 +36,9 @@ allowed_countries = {
     "france",
     "germany",
     "turkey",
-    "argentina",
+    "italy",
+    "spain",
+    "europe",
 }
 
 
@@ -974,376 +979,134 @@ class SofaScore:
             pass
 
     def get_analise_event(self, match):
-        """
-        Versão PRO:
-        - Usa event_json + stats_json (+ histórico, se disponível)
-        - Integra xG
-        - Calcula pressão ofensiva
-        - Usa modelo de gols tipo Poisson/Bayes simplificado
-        - Retorna estrutura compatível com o template
-        """
         try:
             event = match.event_json or {}
-            standings = match.stading_json or {}
+            stats = match.stats_json or {}  # melhor que raw_statistics_json
 
-            # Se você tiver raw_statistics_json no Match:
-            try:
-                import json
+            # TIMES
+            home = event.get("homeTeam", {}).get("name", str(match.home_team))
+            away = event.get("awayTeam", {}).get("name", str(match.away_team))
 
-                stats_json = json.loads(
-                    getattr(match, "raw_statistics_json", "") or "{}"
-                )
-            except Exception:
-                stats_json = {}
+            # GOLS ATUAIS
+            hg = event.get("homeScore", {}).get("current", match.home_team_score or 0)
+            ag = event.get("awayScore", {}).get("current", match.away_team_score or 0)
+            total_goals = hg + ag
 
-            # ---------------------------------------------------------------------
-            # INFO BÁSICA
-            # ---------------------------------------------------------------------
-            home = self._safe_get(event, ["homeTeam", "name"], str(match.home_team))
-            away = self._safe_get(event, ["awayTeam", "name"], str(match.away_team))
+            # MINUTO
+            now = datetime.now(timezone.utc).timestamp()
+            start = event.get("startTimestamp")
+            minute = int((now - start) / 60) if start else None
+            minute = max(0, min(minute or 0, 100))
 
-            hg = self._safe_get(
-                event, ["homeScore", "current"], match.home_team_score or 0
-            )
-            ag = self._safe_get(
-                event, ["awayScore", "current"], match.away_team_score or 0
-            )
-            total_goals = (hg or 0) + (ag or 0)
-
-            # ---------------------------------------------------------------------
-            # MINUTO DE JOGO
-            # ---------------------------------------------------------------------
-            now_ts = datetime.now(timezone.utc).timestamp()
-            start_ts = event.get("startTimestamp")
-
-            if start_ts:
-                minute = int((now_ts - start_ts) // 60)
-                minute = max(0, min(minute, 100))
-            else:
-                # fallback: se já finalizou, assume 90; se não, tenta usar date
-                if match.finalizado:
-                    minute = 90
-                else:
-                    minute = None
-
-            # Faixa de tempo (para heurísticas)
-            if minute is None:
-                fase_jogo = "desconhecido"
-            elif minute < 15:
-                fase_jogo = "início"
-            elif minute < 35:
-                fase_jogo = "primeiro_meio"
-            elif minute < 60:
-                fase_jogo = "intervalo_inicio_2t"
-            elif minute < 75:
-                fase_jogo = "meio_2t"
-            else:
-                fase_jogo = "fim"
-
-            # ---------------------------------------------------------------------
-            # GOL RECENTE
-            # ---------------------------------------------------------------------
-            gol_recente = False
-            tempo_desde_gol = None
-            changes = event.get("changes") or {}
-
-            if isinstance(changes, dict) and "changeTimestamp" in changes:
-                last_change = changes["changeTimestamp"]
-                tempo_desde_gol = now_ts - last_change
-                if tempo_desde_gol < 300:  # menos de 5min
-                    gol_recente = True
-
-            # ---------------------------------------------------------------------
-            # xG, ATAQUES, FINALIZAÇÕES, ESCANTEIOS, ETC (stats_json)
-            # ---------------------------------------------------------------------
-            xg_home, xg_away = self._extract_stat_from_stats_json(
-                stats_json, "expectedGoals", 0.0
-            )
-            attacks_home, attacks_away = self._extract_stat_from_stats_json(
-                stats_json, "attacks", 0.0
-            )
-            dang_att_home, dang_att_away = self._extract_stat_from_stats_json(
-                stats_json, "dangerousAttacks", 0.0
-            )
-            shots_home, shots_away = self._extract_stat_from_stats_json(
-                stats_json, "shotsTotal", 0.0
-            )
-            shots_on_home, shots_on_away = self._extract_stat_from_stats_json(
-                stats_json, "shotsOnTarget", 0.0
-            )
-            corners_home, corners_away = self._extract_stat_from_stats_json(
-                stats_json, "cornerKicks", 0.0
-            )
-
-            # Se você já tiver MatchStats preenchido, pode fazer um override:
-            try:
-                ms = MatchStats.objects.filter(match=match).first()
-            except Exception:
-                ms = None
-
-            if ms:
-                if ms.xg_home is not None and ms.xg_away is not None:
-                    xg_home, xg_away = float(ms.xg_home), float(ms.xg_away)
-
-                # se quiser, pode sobrescrever também shots, corners etc.
-                # shots_home, shots_away = ms.shots_home, ms.shots_away, ...
-
-            # ---------------------------------------------------------------------
-            # PRESSÃO OFENSIVA (0–100)
-            # ---------------------------------------------------------------------
-            def calc_pressao(att, dang_att, shots, xg, minute):
-                if not minute or minute <= 0:
-                    minute = 1
-                # normaliza por minuto
-                att_pm = att / minute
-                dang_pm = dang_att / minute
-                shots_pm = shots / minute
-                xg_pm = xg / minute
-
-                # pesos arbitrários – você pode tunar depois
-                score = att_pm * 0.8 + dang_pm * 1.4 + shots_pm * 2.0 + xg_pm * 20.0
-                # clamp 0–100
-                return max(0.0, min(score, 100.0))
-
-            pressure_home = calc_pressao(
-                attacks_home, dang_att_home, shots_home, xg_home, minute or 1
-            )
-            pressure_away = calc_pressao(
-                attacks_away, dang_att_away, shots_away, xg_away, minute or 1
-            )
-
-            # métrica única de momento
-            momentum_raw = pressure_home - pressure_away
-            # se quiser usar momentum em outro lugar:
-            # momentum_score = momentum_raw (pode normalizar depois)
-
-            # ---------------------------------------------------------------------
-            # BASE BAYESIANA: MÉDIA DE GOLS DA LIGA + FORÇA HISTÓRICA
-            # ---------------------------------------------------------------------
-            try:
-                league_qs = Match.objects.filter(
-                    season=match.season,
-                    finalizado=True,
-                    home_team__isnull=False,
-                    away_team__isnull=False,
+            # ----------------------------------------------------------
+            # EXTRAÇÃO DE ESTATÍSTICAS ESSENCIAIS
+            # ----------------------------------------------------------
+            def s(key, default=0):
+                return float(stats.get(key, {}).get("home", default)), float(
+                    stats.get(key, {}).get("away", default)
                 )
 
-                league_aggs = league_qs.aggregate(
-                    avg_goals=Avg(F("home_team_score") + F("away_team_score")),
-                )
-                league_avg_goals = league_aggs["avg_goals"] or 2.5
-            except Exception:
-                league_avg_goals = 2.5
+            xg_home, xg_away = s("expectedGoals")
+            shots_home, shots_away = s("shotsTotal")
+            dang_home, dang_away = s("dangerousAttacks")
+            corners_home, corners_away = s("cornerKicks")
 
-            # histórico recente dos times (últimos 10 jogos)
-            def build_team_strength(team, as_home=True, as_away=True):
-                qs = Match.objects.filter(finalizado=True)
-                if as_home:
-                    qs = qs.filter(home_team=team) | Match.objects.filter(
-                        away_team=team, finalizado=True
-                    )
-                else:
-                    qs = qs.filter(home_team=team, finalizado=True)
+            xg_total = xg_home + xg_away
+            dang_total = dang_home + dang_away
 
-                qs = qs.order_by("-date")[:10]
+            # ----------------------------------------------------------
+            # INDICADORES DE PRESSÃO (curto prazo)
+            # ----------------------------------------------------------
+            pressure_home = xg_home * 20 + dang_home * 0.2 + shots_home * 1.2
+            pressure_away = xg_away * 20 + dang_away * 0.2 + shots_away * 1.2
 
-                if not qs:
-                    return 1.0, 1.0  # ataque, defesa neutros
+            momentum = pressure_home - pressure_away
 
-                total_scored = 0
-                total_conceded = 0
-                count = 0
-
-                for m in qs:
-                    if m.home_team == team:
-                        s = m.home_team_score or 0
-                        c = m.away_team_score or 0
-                    else:
-                        s = m.away_team_score or 0
-                        c = m.home_team_score or 0
-                    total_scored += s
-                    total_conceded += c
-                    count += 1
-
-                if count == 0:
-                    return 1.0, 1.0
-
-                avg_scored = total_scored / count
-                avg_conceded = total_conceded / count
-
-                # força relativa vs média da liga
-                attack_strength = (
-                    (avg_scored / (league_avg_goals / 2))
-                    if league_avg_goals > 0
-                    else 1.0
-                )
-                defense_strength = (
-                    (avg_conceded / (league_avg_goals / 2))
-                    if league_avg_goals > 0
-                    else 1.0
-                )
-
-                # clamp para não explodir
-                attack_strength = max(0.5, min(attack_strength, 1.8))
-                defense_strength = max(0.5, min(defense_strength, 1.8))
-
-                return attack_strength, defense_strength
-
-            try:
-                atk_home, def_home = build_team_strength(match.home_team)
-                atk_away, def_away = build_team_strength(match.away_team)
-            except Exception:
-                atk_home = def_home = atk_away = def_away = 1.0
-
-            # ---------------------------------------------------------------------
-            # LAMBDAS ESPERADAS (tipo Poisson)
-            # ---------------------------------------------------------------------
-            base_home = league_avg_goals * 0.55
-            base_away = league_avg_goals * 0.45
-
-            lam_home = base_home * atk_home * def_away
-            lam_away = base_away * atk_away * def_home
-
-            # Ajuste com xG – se xG está muito alto vs gols, aumenta levemente
-            if xg_home + xg_away > 0:
-                ratio_home = xg_home / max(hg, 0.5)
-                ratio_away = xg_away / max(ag, 0.5)
-                lam_home *= max(0.7, min(ratio_home, 1.4))
-                lam_away *= max(0.7, min(ratio_away, 1.4))
-
-            # Ajuste pela fase do jogo:
-            if fase_jogo in ("início", "primeiro_meio"):
-                lam_home *= 0.9
-                lam_away *= 0.9
-            elif fase_jogo in ("meio_2t", "fim"):
-                lam_home *= 1.1
-                lam_away *= 1.1
-
-            # ---------------------------------------------------------------------
-            # PROJEÇÃO DE GOLS FUTUROS / PLACAR ESTIMADO
-            # ---------------------------------------------------------------------
-            # projeção de gols totais finais
-            remaining_factor = 1.0
-            if minute and minute > 0 and minute < 90:
-                remaining_factor = (90 - minute) / 90
-
-            exp_fut_home = lam_home * remaining_factor
-            exp_fut_away = lam_away * remaining_factor
-
-            est_home = hg + exp_fut_home
-            est_away = ag + exp_fut_away
-
-            projected_score = f"{est_home:.1f} x {est_away:.1f}"
-
-            # ---------------------------------------------------------------------
-            # PROBABILIDADES (heurísticas usando tudo isso)
-            # ---------------------------------------------------------------------
+            # ----------------------------------------------------------
+            # PROBABILIDADES LIVE (REALISTAS E SIMPLES)
+            # ----------------------------------------------------------
             prob = {
-                "over_1_5": 50,
-                "over_2_5": 40,
-                "btts": 30,
-                "goal_h2": 45,
+                "over_2_5": 30,
+                "over_1_5": 60,
+                "btts": 25,
             }
 
-            # base por lambda total
-            lam_total = lam_home + lam_away
-            if lam_total >= 3.0:
+            # Baseado em xG acumulado
+            if xg_total >= 2.0:
                 prob["over_2_5"] = 75
-                prob["over_1_5"] = 90
-            elif lam_total >= 2.3:
+            elif xg_total >= 1.6:
                 prob["over_2_5"] = 65
-                prob["over_1_5"] = 85
-            elif lam_total <= 1.5:
-                prob["over_2_5"] = 35
-                prob["over_1_5"] = 60
+            elif xg_total >= 1.2:
+                prob["over_2_5"] = 55
 
-            # considerar gols já feitos
-            if total_goals >= 2:
-                prob["over_1_5"] = 97
-                prob["over_2_5"] = max(prob["over_2_5"], 75)
-            elif total_goals == 1:
-                prob["over_1_5"] = max(prob["over_1_5"], 70)
+            # Over 1.5 sempre mais fácil
+            prob["over_1_5"] = max(prob["over_2_5"] + 20, 60)
 
-            # BTTS – se ambos marcando + xG bom dos dois lados
-            if hg > 0 and ag > 0:
-                prob["btts"] = 75
-            elif xg_home > 0.7 and xg_away > 0.7:
-                prob["btts"] = 65
+            # BTTS
+            if xg_home >= 0.7 and xg_away >= 0.7:
+                prob["btts"] = 70
+            elif shots_home >= 5 and shots_away >= 5:
+                prob["btts"] = 60
 
-            # Gol no 2º tempo (ou gol daqui pra frente, se você quiser)
-            if fase_jogo in ("intervalo_inicio_2t", "meio_2t"):
-                prob["goal_h2"] = 60
-            if fase_jogo == "fim":
-                prob["goal_h2"] -= 10
+            # Ajuste por tempo
+            time_factor = (90 - minute) / 90
+            if minute > 70:
+                prob["over_2_5"] -= 10 * time_factor
+                prob["btts"] -= 10 * time_factor
 
-            if gol_recente:
-                prob["over_2_5"] += 5
-                prob["goal_h2"] += 8
-                prob["btts"] += 5
-
-            # clamp 1–99
+            # Clamp final
             for k in prob:
-                prob[k] = max(1, min(int(round(prob[k])), 99))
+                prob[k] = max(1, min(int(prob[k]), 95))
 
-            # ---------------------------------------------------------------------
+            # ----------------------------------------------------------
             # ODDS JUSTAS
-            # ---------------------------------------------------------------------
-            odds = {
-                "over_2_5": round(100 / prob["over_2_5"], 2),
-                "btts": round(100 / prob["btts"], 2),
-                "goal_h2": round(100 / prob["goal_h2"], 2),
-            }
+            # ----------------------------------------------------------
+            odds = {k: round(100 / prob[k], 2) for k in prob}
 
-            # ---------------------------------------------------------------------
-            # INSIGHTS
-            # ---------------------------------------------------------------------
+            # ----------------------------------------------------------
+            # INSIGHTS (limpos e reais)
+            # ----------------------------------------------------------
             insights = []
 
-            insights.append(f"Liga com média de {league_avg_goals:.2f} gols por jogo.")
-            insights.append(f"xG: {home} {xg_home:.2f} x {xg_away:.2f} {away}.")
-            insights.append(
-                f"Pressão: {home} {pressure_home:.1f} x {pressure_away:.1f} {away}."
-            )
+            if xg_total >= 1.6:
+                insights.append(
+                    "Alto ritmo ofensivo — xG elevado sinaliza chance real de gols."
+                )
+            if momentum > 20:
+                insights.append(f"{home} domina ofensivamente.")
+            if momentum < -20:
+                insights.append(f"{away} domina ofensivamente.")
+            if corners_home - corners_away >= 4:
+                insights.append(f"{home} pressiona muito pelos lados (escanteios).")
+            if corners_away - corners_home >= 4:
+                insights.append(f"{away} pressiona muito pelos lados (escanteios).")
 
-            if gol_recente:
-                insights.append("Gol recente — momento de alta volatilidade.")
+            # ----------------------------------------------------------
+            # RECOMENDAÇÃO
+            # ----------------------------------------------------------
+            rec_map = {
+                "over_2_5": prob["over_2_5"],
+                "btts": prob["btts"],
+                "over_1_5": prob["over_1_5"],
+            }
 
-            if momentum_raw > 10:
-                insights.append(f"{home} pressiona mais no momento.")
-            elif momentum_raw < -10:
-                insights.append(f"{away} pressiona mais no momento.")
-
-            if fase_jogo == "fim":
-                insights.append("Minutos finais — jogos tendem a ficar caóticos.")
-
-            # ---------------------------------------------------------------------
-            # RECOMENDAÇÃO FINAL
-            # ---------------------------------------------------------------------
-            if prob["over_2_5"] >= 70:
-                recommendation = "Over 2.5"
-                confidence = prob["over_2_5"]
-            elif prob["btts"] >= 65:
-                recommendation = "BTTS (Ambas Marcam)"
-                confidence = prob["btts"]
-            else:
-                recommendation = "Gol no 2º tempo"
-                confidence = prob["goal_h2"]
+            recommendation = max(rec_map, key=rec_map.get)
+            confidence = rec_map[recommendation]
 
             return {
                 "score": f"{home} {hg} x {ag} {away}",
                 "minute": minute,
-                "gol_recente": gol_recente,
-                "tempo_desde_gol": tempo_desde_gol,
                 "probabilities": prob,
                 "odds": odds,
-                "projected_score": projected_score,
+                "xg": {"home": xg_home, "away": xg_away},
+                "momentum": momentum,
                 "insights": insights,
                 "recommendation": recommendation,
                 "confidence": confidence,
             }
 
         except Exception as e:
-            print("Erro ao processar match:", match.id, e)
+            print("Erro:", e)
             return None
 
     def analyze_streaks(self, streaks, home_name="Home", away_name="Away"):
