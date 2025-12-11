@@ -120,31 +120,49 @@
                     </div>
 
                     <div class="row g-3">
+
+                        <!-- ODD -->
                         <div class="col-6">
                             <label class="form-label text-secondary fw-bold small text-uppercase d-flex justify-content-between">
                                 Odd
                                 {% if recommended_odd %}
-                                <span class="suggestion-btn" onclick="applyValue('odd', '{{ recommended_odd|floatformat:2 }}')">
+                                <span class="suggestion-btn"
+                                      onclick="applyValue('odd', '{{ recommended_odd|floatformat:2 }}')">
                                     Sugerida: {{ recommended_odd|floatformat:2 }}
                                 </span>
                                 {% endif %}
                             </label>
-                            <input type="number" class="form-control form-control-dark text-center fs-5" id="odd" name="odd"
-                                   step="0.01" placeholder="1.80" required>
+
+                            <input type="number"
+                                   class="form-control form-control-dark text-center fs-5"
+                                   id="odd" name="odd"
+                                   step="0.01"
+                                   placeholder="1.80"
+                                   value="{% if pre_odd %}{{ pre_odd }}{% else %}{{ recommended_odd|default:'' }}{% endif %}"
+                                   required>
                         </div>
 
+                        <!-- STAKE -->
                         <div class="col-6">
                             <label class="form-label text-secondary fw-bold small text-uppercase d-flex justify-content-between">
                                 Valor (R$)
                                 {% if recommended_stake %}
-                                <span class="suggestion-btn" onclick="applyValue('stake', '{{ recommended_stake|stringformat:".2f" }}')">
+                                <span class="suggestion-btn"
+                                      onclick="applyValue('stake', '{{ recommended_stake|stringformat:".2f" }}')">
                                     Sugerido: {{ recommended_stake|floatformat:0 }}
                                 </span>
                                 {% endif %}
                             </label>
-                            <input type="number" class="form-control form-control-dark text-center fs-5" id="stake" name="stake"
-                                   step="0.01" placeholder="0.00" required>
+
+                            <input type="number"
+                                   class="form-control form-control-dark text-center fs-5"
+                                   id="stake" name="stake"
+                                   step="0.01"
+                                   placeholder="0.00"
+                                   value="{{ recommended_stake|default:'' }}"
+                                   required>
                         </div>
+
                     </div>
 
                     <div class="return-box mt-4 text-center">

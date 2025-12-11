@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from .views import MatchOddsFeaturedView
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -23,4 +24,5 @@ urlpatterns = [
         name="match_snapshots",
     ),
     path("run-scraper/", views.sofascore_scrape_view, name="run_scraper"),
+    path("matches/<int:pk>/odds/featured/", MatchOddsFeaturedView.as_view()),
 ]
