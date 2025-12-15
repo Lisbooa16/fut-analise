@@ -1,7 +1,8 @@
 from django.urls import path
 
 from . import views
-from .views import MatchOddsFeaturedView
+from .views import MatchOddsAllView, MatchOddsFeaturedView
+from .views.api import model_comparison_view
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -25,4 +26,9 @@ urlpatterns = [
     ),
     path("run-scraper/", views.sofascore_scrape_view, name="run_scraper"),
     path("matches/<int:pk>/odds/featured/", MatchOddsFeaturedView.as_view()),
+    path("matches/<int:pk>/odds/all/", MatchOddsAllView.as_view()),
+    path("models/", model_comparison_view, name="model-comparison"),
+    path(
+        "models/<int:match_id>/", model_comparison_view, name="model-comparison-match"
+    ),
 ]

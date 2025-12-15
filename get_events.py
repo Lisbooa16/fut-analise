@@ -978,6 +978,34 @@ class SofaScore:
         except:
             pass
 
+    def get_pregame_form(self, event_id: int):
+        """Busca forma recente (pregame) direto da API sofascore."""
+        url = f"{BASE}/event/{event_id}/pregame-form"
+        raw = self.get_json(url)
+        if not raw:
+            return {}
+
+        def normalize(team: dict):
+            if not team:
+                return {}
+            avg = team.get("avgRating")
+            try:
+                avg = float(avg) if avg is not None else None
+            except (TypeError, ValueError):
+                avg = None
+            return {
+                "avg_rating": avg,
+                "position": team.get("position"),
+                "points": team.get("value"),
+                "form": team.get("form") or [],
+            }
+
+        return {
+            "home": normalize(raw.get("homeTeam")),
+            "away": normalize(raw.get("awayTeam")),
+            "label": raw.get("label"),
+        }
+
     def get_analise_event(self, match):
         try:
             event = match.event_json or {}

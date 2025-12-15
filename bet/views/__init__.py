@@ -1,5 +1,6 @@
 from .api import (
     BASE,
+    MatchOddsAllView,
     MatchOddsFeaturedView,
     generate_auto_prediction,
     get_json,
@@ -26,6 +27,7 @@ from .match import (
 __all__ = [
     "BASE",
     "MatchOddsFeaturedView",
+    "MatchOddsAllView",
     "MatchStatFilters",
     "bankroll_view",
     "create_bet_from_model",

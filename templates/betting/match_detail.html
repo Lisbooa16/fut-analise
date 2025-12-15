@@ -5,7 +5,6 @@
 {% block content %}
 
 <style>
-/* --- TEMA DARK PREMIUM --- */
 :root {
     --bg-main: #121214;
     --bg-card: #1e1e24;
@@ -17,33 +16,15 @@
     --text-main: #ffffff;
     --text-muted: #7e8299;
 }
-
-/* Placar Principal */
 .scoreboard-card {
     background: linear-gradient(180deg, #2b2b40 0%, #1e1e2d 100%);
     border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 2rem;
-    position: relative;
     overflow: hidden;
 }
-
-.score-val {
-    font-size: 3.5rem;
-    font-weight: 800;
-    color: #fff;
-    line-height: 1;
-}
-
-.team-name-lg {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-/* Badge AO VIVO pulsante */
+.score-val { font-size: 3.5rem; font-weight: 800; color: #fff; line-height: 1; }
+.team-name-lg { font-size: 1.25rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
 .live-badge {
     background: rgba(246, 78, 96, 0.15);
     color: var(--danger);
@@ -57,68 +38,26 @@
     gap: 8px;
     animation: border-pulse 2s infinite;
 }
-
-.live-dot {
-    width: 8px;
-    height: 8px;
-    background-color: var(--danger);
-    border-radius: 50%;
-    box-shadow: 0 0 10px var(--danger);
-}
-
-/* Termômetro de Pressão (Tug of War) */
-.pressure-wrapper {
-    background: #121214;
-    height: 12px;
-    border-radius: 6px;
-    display: flex;
-    overflow: hidden;
-    position: relative;
-    margin: 15px 0;
-}
-
-.pressure-bar {
-    height: 100%;
-    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
+.live-dot { width: 8px; height: 8px; background-color: var(--danger); border-radius: 50%; box-shadow: 0 0 10px var(--danger); }
+.pressure-wrapper { background: #121214; height: 12px; border-radius: 6px; display: flex; overflow: hidden; margin: 15px 0; }
+.pressure-bar { height: 100%; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
 .p-home { background: linear-gradient(90deg, #3699ff 0%, #00d2ff 100%); }
 .p-away { background: linear-gradient(90deg, #ff4b2b 0%, #f64e60 100%); }
-
-/* Barras de Estatísticas */
 .stat-row { margin-bottom: 16px; }
-.stat-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.85rem;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
-.stat-progress-bg {
-    background: rgba(255,255,255,0.05);
-    height: 6px;
-    border-radius: 3px;
-    display: flex;
-    overflow: hidden;
-}
+.stat-header { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
+.stat-progress-bg { background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; display: flex; overflow: hidden; }
 .stat-fill { height: 100%; transition: width 0.6s ease; }
 .fill-home { background-color: var(--primary); }
 .fill-away { background-color: var(--danger); }
-
-/* Insights Log */
-.insight-box {
-    background: rgba(0,0,0,0.2);
-    border-left: 3px solid var(--warning);
-    padding: 10px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-    color: #e0e0e0;
-}
-
-@keyframes border-pulse {
-    0% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0.4); }
-    70% { box-shadow: 0 0 0 10px rgba(246, 78, 96, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0); }
-}
+.insight-box { background: rgba(0,0,0,0.2); border-left: 3px solid var(--warning); padding: 10px; margin-bottom: 8px; font-size: 0.9rem; color: #e0e0e0; }
+.form-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); font-weight: 800; color: #fff; }
+.odds-card { background: #181820; border: 1px solid var(--border-color); border-radius: 14px; }
+.odds-chip { display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 10px; font-weight: 700; }
+.odds-choice { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px; transition: transform 0.2s ease, border-color 0.2s ease; }
+.odds-choice:hover { transform: translateY(-2px); border-color: rgba(54,153,255,0.5); text-decoration: none; }
+.odds-label { font-size: 0.75rem; letter-spacing: 0.5px; }
+.odds-prob { font-size: 0.8rem; opacity: 0.85; }
+@keyframes border-pulse { 0% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(246, 78, 96, 0); } 100% { box-shadow: 0 0 0 0 rgba(246, 78, 96, 0); } }
 </style>
 
 <div class="container-fluid px-md-5 py-4">
@@ -259,6 +198,59 @@
                                 <span class="fw-bold text-white">{{ analysis.probabilities.btts|default:"-" }}%</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if pregame_form.home or pregame_form.away %}
+            <div class="card bg-dark border border-secondary border-opacity-25 mb-4 shadow-sm">
+                <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                    <h6 class="mb-0 text-white fw-bold"><i class="bi bi-graph-up text-primary me-2"></i>Forma Pré-Jogo</h6>
+                </div>
+                <div class="card-body">
+                    {% if pregame_edge.edge %}
+                    <div class="alert alert-secondary bg-opacity-10 border-0 text-white mb-3">
+                        <div class="fw-bold">{{ pregame_edge.edge }}</div>
+                        <small class="text-muted">{{ pregame_edge.reason }}</small>
+                    </div>
+                    {% endif %}
+                    <div class="row g-3">
+                        {% if pregame_form.home %}
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-muted text-uppercase">Mandante</small>
+                                    <div class="text-white fw-semibold">{{ match.home_team }}</div>
+                                    <div class="small text-muted">Posição: {{ pregame_form.home.position|default:"-" }} · {{ pregame_form.label|default:"Pts" }}: {{ pregame_form.home.points|default:"-" }}</div>
+                                    <div class="small text-muted">Rating médio: {{ pregame_form.home.avg_rating|default:"-" }}</div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    {% for r in pregame_form.home.form %}
+                                        <span class="form-badge {% if r == 'W' %}bg-success bg-opacity-25{% elif r == 'L' %}bg-danger bg-opacity-25{% else %}bg-secondary bg-opacity-25{% endif %}">{{ r }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if pregame_form.away %}
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-muted text-uppercase">Visitante</small>
+                                    <div class="text-white fw-semibold">{{ match.away_team }}</div>
+                                    <div class="small text-muted">Posição: {{ pregame_form.away.position|default:"-" }} · {{ pregame_form.label|default:"Pts" }}: {{ pregame_form.away.points|default:"-" }}</div>
+                                    <div class="small text-muted">Rating médio: {{ pregame_form.away.avg_rating|default:"-" }}</div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    {% for r in pregame_form.away.form %}
+                                        <span class="form-badge {% if r == 'W' %}bg-success bg-opacity-25{% elif r == 'L' %}bg-danger bg-opacity-25{% else %}bg-secondary bg-opacity-25{% endif %}">{{ r }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -592,62 +584,255 @@ document.addEventListener("DOMContentLoaded", function () {
         .catch(err => console.error("Live Update Error:", err));
     }
     function fetchPreMatchOdds() {
-        const url = `/matches/${MATCH_ID}/odds/featured/`;
+        const url = `/matches/${MATCH_ID}/odds/all/`;
 
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                console.log("ODDS:", data);
+                console.log("ODDS ALL:", data);
 
-                // Pega exatamente o mercado 1x2 igual está no JSON
-                const odds = data.markets["1x2"];
+                const rawMarkets = data.markets || [];
 
-                if (!odds) {
-                    console.error("Mercado 1x2 não encontrado:", data.markets);
-                    return;
-                }
+                // Normaliza formato vindo da API (nosso ou direto do SofaScore)
+                const normalizeMarket = (m) => {
+                    if (!m || !m.choices) return null;
+                    // já convertido
+                    if (m.choices[0] && m.choices[0].odd !== undefined) {
+                        return m;
+                    }
+                    // converter fractionals
+                    const toDec = (frac) => {
+                        const [num, den] = frac.split("/").map(parseFloat);
+                        return 1 + num / den;
+                    };
+                    const choices = (m.choices || []).map((c) => {
+                        if (!c.fractionalValue) return null;
+                        const odd = toDec(c.fractionalValue);
+                        return {
+                            name: c.name,
+                            odd: parseFloat(odd.toFixed(2)),
+                            prob: parseFloat((1 / odd).toFixed(4)),
+                        };
+                    }).filter(Boolean);
+                    return {
+                        market_id: m.marketId || m.market_id,
+                        market: m.marketName || m.market,
+                        group: m.marketGroup || m.group,
+                        period: m.marketPeriod || m.period,
+                        label: m.choiceGroup || m.label,
+                        choices,
+                    };
+                };
 
-                const html = `
-                    <div class="card bg-dark border border-success border-opacity-25 mb-4 shadow-sm">
+                const markets = rawMarkets.map(normalizeMarket).filter(Boolean);
+
+                const odds1x2 = markets.find(
+                    (m) => m.market_id === 1 || (m.group || "").toLowerCase() === "1x2"
+                );
+                const oddsAsian = markets.find(
+                    (m) => (m.group || "").toLowerCase().includes("asian")
+                );
+                const doubleChance = markets.find(
+                    (m) => (m.market || "").toLowerCase().includes("double chance") || m.market_id === 2
+                );
+                const btts = markets.find(
+                    (m) => (m.market || "").toLowerCase().includes("both teams to score") || m.market_id === 5
+                );
+                const goals25 = markets.find(
+                    (m) =>
+                        (m.market || "").toLowerCase().includes("match goals") &&
+                        ((m.label || "").includes("2.5") || (m.label || "").includes("2,5"))
+                ) || markets.find((m) => (m.market || "").toLowerCase().includes("match goals"));
+
+                let html = "";
+
+                if (odds1x2) {
+                    const home = odds1x2.choices.find(c => c.name === "1") || odds1x2.choices[0];
+                    const draw = odds1x2.choices.find(c => c.name === "X") || odds1x2.choices[1];
+                    const away = odds1x2.choices.find(c => c.name === "2") || odds1x2.choices[2];
+                    html += `
+                    <div class="odds-card mb-4 shadow-sm">
                         <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
-                            <h6 class="mb-0 text-success fw-bold text-uppercase">
-                                <i class="bi bi-cash-coin me-2"></i> Odds (Pré-Jogo)
+                            <h6 class="mb-0 text-white fw-bold text-uppercase d-flex align-items-center gap-2">
+                                <span class="odds-chip bg-success bg-opacity-25 text-success"><i class="bi bi-cash-coin"></i></span>
+                                Mercado 1x2
                             </h6>
                         </div>
                         <div class="card-body text-center">
-                            <div class="row g-2 text-white">
+                            <div class="row g-3 text-white">
 
                                 <div class="col-4">
-                                    <a href="/matches/${MATCH_ID}/bet/?market=home&odd=${odds.home.odd}"
-                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
-                                        <small class="text-muted d-block">Home</small>
-                                        <span class="fw-bold">${odds.home.odd}</span><br>
-                                        <small class="text-success">${(odds.home.prob * 100).toFixed(1)}%</small>
+                                    <a href="/matches/${MATCH_ID}/bet/?market=home&odd=${home.odd}" class="odds-choice d-block text-white text-decoration-none">
+                                        <span class="odds-label text-muted d-block">Home</span>
+                                        <span class="fw-bold fs-5 d-block">${home.odd}</span>
+                                        <span class="odds-prob text-success">${(home.prob * 100).toFixed(1)}%</span>
                                     </a>
                                 </div>
 
                                 <div class="col-4">
-                                    <a href="/matches/${MATCH_ID}/bet/?market=draw&odd=${odds.draw.odd}"
-                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
-                                        <small class="text-muted d-block">Empate</small>
-                                        <span class="fw-bold">${odds.draw.odd}</span><br>
-                                        <small class="text-warning">${(odds.draw.prob * 100).toFixed(1)}%</small>
+                                    <a href="/matches/${MATCH_ID}/bet/?market=draw&odd=${draw.odd}" class="odds-choice d-block text-white text-decoration-none">
+                                        <span class="odds-label text-muted d-block">Empate</span>
+                                        <span class="fw-bold fs-5 d-block">${draw.odd}</span>
+                                        <span class="odds-prob text-warning">${(draw.prob * 100).toFixed(1)}%</span>
                                     </a>
                                 </div>
 
                                 <div class="col-4">
-                                    <a href="/matches/${MATCH_ID}/bet/?market=away&odd=${odds.away.odd}"
-                                       class="border border-secondary border-opacity-25 rounded p-2 d-block text-decoration-none text-white">
-                                        <small class="text-muted d-block">Away</small>
-                                        <span class="fw-bold">${odds.away.odd}</span><br>
-                                        <small class="text-danger">${(odds.away.prob * 100).toFixed(1)}%</small>
+                                    <a href="/matches/${MATCH_ID}/bet/?market=away&odd=${away.odd}" class="odds-choice d-block text-white text-decoration-none">
+                                        <span class="odds-label text-muted d-block">Away</span>
+                                        <span class="fw-bold fs-5 d-block">${away.odd}</span>
+                                        <span class="odds-prob text-danger">${(away.prob * 100).toFixed(1)}%</span>
                                     </a>
                                 </div>
 
                             </div>
                         </div>
                     </div>
-                `;
+                    `;
+                }
+
+                if (oddsAsian && oddsAsian.choices.length >= 2) {
+                    const home = oddsAsian.choices[0];
+                    const away = oddsAsian.choices[1];
+                    html += `
+                    <div class="odds-card mb-4 shadow-sm">
+                        <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                            <h6 class="mb-0 text-info fw-bold text-uppercase d-flex align-items-center gap-2">
+                                <span class="odds-chip bg-info bg-opacity-25 text-info"><i class="bi bi-graph-up"></i></span>
+                                Asian Handicap ${oddsAsian.label || ""}
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="row g-3 text-white">
+                                <div class="col-6">
+                                    <a href="/matches/${MATCH_ID}/bet/?market=asian_home&odd=${home.odd}" class="odds-choice d-block text-white text-decoration-none">
+                                        <span class="odds-label text-muted d-block">Home ${oddsAsian.label || ""}</span>
+                                        <span class="fw-bold fs-5 d-block">${home.odd}</span>
+                                        <span class="odds-prob text-success">${(home.prob * 100).toFixed(1)}%</span>
+                                    </a>
+                                </div>
+                                <div class="col-6">
+                                    <a href="/matches/${MATCH_ID}/bet/?market=asian_away&odd=${away.odd}" class="odds-choice d-block text-white text-decoration-none">
+                                        <span class="odds-label text-muted d-block">Away ${oddsAsian.label || ""}</span>
+                                        <span class="fw-bold fs-5 d-block">${away.odd}</span>
+                                        <span class="odds-prob text-danger">${(away.prob * 100).toFixed(1)}%</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (doubleChance && doubleChance.choices.length >= 2) {
+                    const c1 = doubleChance.choices.find((c) => c.name === "1X") || doubleChance.choices[0];
+                    const c2 = doubleChance.choices.find((c) => c.name === "X2") || doubleChance.choices[1];
+                    const c3 = doubleChance.choices.find((c) => c.name === "12") || doubleChance.choices[2];
+                    html += `
+                    <div class="odds-card mb-4 shadow-sm">
+                        <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                            <h6 class="mb-0 text-primary fw-bold text-uppercase d-flex align-items-center gap-2">
+                                <span class="odds-chip bg-primary bg-opacity-25 text-primary"><i class="bi bi-shuffle"></i></span>
+                                Dupla Chance
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="row g-3 text-white">
+                                ${c1 ? `
+                                <div class="col-4">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">1X</span>
+                                        <span class="fw-bold fs-5 d-block">${c1.odd}</span>
+                                        <span class="odds-prob text-success">${(c1.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>` : ""}
+                                ${c2 ? `
+                                <div class="col-4">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">X2</span>
+                                        <span class="fw-bold fs-5 d-block">${c2.odd}</span>
+                                        <span class="odds-prob text-warning">${(c2.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>` : ""}
+                                ${c3 ? `
+                                <div class="col-4">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">12</span>
+                                        <span class="fw-bold fs-5 d-block">${c3.odd}</span>
+                                        <span class="odds-prob text-danger">${(c3.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>` : ""}
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (btts && btts.choices.length >= 2) {
+                    const yes = btts.choices.find((c) => c.name.toLowerCase().includes("yes")) || btts.choices[0];
+                    const no = btts.choices.find((c) => c.name.toLowerCase().includes("no")) || btts.choices[1];
+                    html += `
+                    <div class="odds-card mb-4 shadow-sm">
+                        <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                            <h6 class="mb-0 text-warning fw-bold text-uppercase d-flex align-items-center gap-2">
+                                <span class="odds-chip bg-warning bg-opacity-25 text-warning"><i class="bi bi-chat-quote"></i></span>
+                                Ambas Marcam
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="row g-3 text-white">
+                                <div class="col-6">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">Sim</span>
+                                        <span class="fw-bold fs-5 d-block">${yes.odd}</span>
+                                        <span class="odds-prob text-success">${(yes.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">Não</span>
+                                        <span class="fw-bold fs-5 d-block">${no.odd}</span>
+                                        <span class="odds-prob text-danger">${(no.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (goals25 && goals25.choices.length >= 2) {
+                    const over = goals25.choices.find((c) => c.name.toLowerCase().includes("over")) || goals25.choices[0];
+                    const under = goals25.choices.find((c) => c.name.toLowerCase().includes("under")) || goals25.choices[1];
+                    html += `
+                    <div class="odds-card mb-4 shadow-sm">
+                        <div class="card-header border-bottom border-secondary border-opacity-25 py-3">
+                            <h6 class="mb-0 text-success fw-bold text-uppercase d-flex align-items-center gap-2">
+                                <span class="odds-chip bg-success bg-opacity-25 text-success"><i class="bi bi-graph-up-arrow"></i></span>
+                                Total de Gols ${goals25.label || ""}
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="row g-3 text-white">
+                                <div class="col-6">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">Over</span>
+                                        <span class="fw-bold fs-5 d-block">${over.odd}</span>
+                                        <span class="odds-prob text-success">${(over.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="odds-choice">
+                                        <span class="odds-label text-muted d-block">Under</span>
+                                        <span class="fw-bold fs-5 d-block">${under.odd}</span>
+                                        <span class="odds-prob text-danger">${(under.prob * 100).toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
 
                 document.getElementById("odds-card-container").innerHTML = html;
             })

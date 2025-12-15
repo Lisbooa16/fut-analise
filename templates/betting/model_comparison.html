@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container py-4">
+
+  {% if match %}
+  <h3>{{ match.home_team.name }} vs {{ match.away_team.name }}</h3>
+  <p>Resultado real: {{ match.home_score }} x {{ match.away_score }}</p>
+
+  <table class="table table-dark table-striped mt-3">
+    <thead>
+      <tr>
+        <th>Mercado</th>
+        <th>Real</th>
+        <th>V3.1</th>
+        <th>V3.2</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for market, values in markets.items %}
+      <tr>
+        <td>{{ market }}</td>
+        <td>{{ values.real }}</td>
+        <td>
+          {% if values.v3.1 == "hit" %}✅
+          {% elif values.v3.1 == "miss" %}❌
+          {% else %}➖{% endif %}
+        </td>
+        <td>
+          {% if values.v3.2 == "hit" %}✅
+          {% elif values.v3.2 == "miss" %}❌
+          {% else %}➖{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    🏆 Melhor modelo neste jogo: <strong>{{ winner_model }}</strong>
+  </div>
+  {% endif %}
+
+  <hr>
+
+  <h4>Performance Geral (%)</h4>
+
+  <table class="table table-bordered table-dark mt-3">
+    <thead>
+      <tr>
+        <th>Mercado</th>
+        <th>V3.1</th>
+        <th>V3.2</th>
+        <th>Melhor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for market, values in summary.items %}
+        <tr>
+          <td>{{ market }}</td>
+          <td>{{ values.v3_1 }}%</td>
+          <td>{{ values.v3_2 }}%</td>
+          <td>
+            {% if values.v3_1 > values.v3_2 %}V3.1
+            {% elif values.v3_2 > values.v3_1 %}V3.2
+            {% else %}Empate{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+
+{% endblock %}

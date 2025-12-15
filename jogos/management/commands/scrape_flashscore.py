@@ -695,7 +695,7 @@ class Command(BaseCommand):
         #     f"{year}-{month:02d}-{day:02d}"
         #     for day in range(1, num_days + 1)
         # ]
-        date = ["2025-12-11"]
+        date = ["2025-12-13"]
 
         for c in date:
             url = f"{BASE}/sport/football/scheduled-events/{c}"

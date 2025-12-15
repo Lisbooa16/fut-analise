@@ -15,7 +15,7 @@ def dashboard(request):
     today = date.today().isoformat()
     if not RunningToday.objects.filter(data=today, rodou=True).exists():
         try:
-            SofaScore(["2025-12-10"]).get_events()
+            SofaScore([today]).get_events()
             RunningToday.objects.update_or_create(data=today, defaults={"rodou": True})
         except Exception as exc:
             print(f"Erro ao rodar scraper: {exc}")

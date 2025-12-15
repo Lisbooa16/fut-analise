@@ -192,3 +192,73 @@ class PossibleBet(models.Model):
 
     def __str__(self):
         return f"{self.market} ({self.probability}%)"
+
+
+class MatchModelEvaluation(models.Model):
+    RESULT_CHOICES = (
+        ("hit", "Hit"),
+        ("miss", "Miss"),
+        ("neutral", "Neutral"),
+    )
+
+    MODEL_CHOICES = (
+        ("v3.1", "V3.1"),
+        ("v3.2", "V3.2"),
+    )
+
+    MARKET_CHOICES = (
+        ("result", "Resultado Final"),
+        ("over25", "Over 2.5"),
+        ("under25", "Under 2.5"),
+        ("btts", "BTTS"),
+        ("first_goal", "Primeiro Gol"),
+        ("corners_over10", "Escanteios Over 10.5"),
+    )
+
+    match = models.ForeignKey(
+        "jogos.Match",
+        on_delete=models.CASCADE,
+        related_name="model_evaluations",
+    )
+
+    model_version = models.CharField(
+        max_length=10,
+        choices=MODEL_CHOICES,
+    )
+
+    market = models.CharField(
+        max_length=30,
+        choices=MARKET_CHOICES,
+    )
+
+    result = models.CharField(
+        max_length=10,
+        choices=RESULT_CHOICES,
+    )
+
+    probability = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Probabilidade prevista pelo modelo para este mercado",
+    )
+
+    real_value = models.CharField(
+        max_length=20,
+        help_text="Resultado real do mercado (ex: over, under, home, away)",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            "match",
+            "model_version",
+            "market",
+        )
+        indexes = [
+            models.Index(fields=["model_version", "market"]),
+            models.Index(fields=["market", "result"]),
+        ]
+
+    def __str__(self):
+        return f"{self.match_id} | {self.model_version} | {self.market} | {self.result}"

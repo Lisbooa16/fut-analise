@@ -4,10 +4,15 @@ import time
 
 import requests
 from curl_cffi import requests as cureq
+from django.db.models import Count, Q
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from bet.models import MatchModelEvaluation
+from jogos.models import Match
 
 BASE = "https://www.sofascore.com/api/v1"
 headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -285,6 +290,7 @@ class MatchOddsFeaturedView(APIView):
 
         ah = data["featured"].get("asian")
         asian_choices = ah["choices"]
+        asian_label = ah.get("choiceGroup") or "+0.25"
 
         ah_home = self.fractional_to_decimal(asian_choices[0]["fractionalValue"])
         ah_away = self.fractional_to_decimal(asian_choices[1]["fractionalValue"])
@@ -304,7 +310,8 @@ class MatchOddsFeaturedView(APIView):
                     "draw": {"odd": odd_draw, "prob": round(probs_norm["draw"], 4)},
                     "away": {"odd": odd_away, "prob": round(probs_norm["away"], 4)},
                 },
-                "asian_0_25": {
+                "asian": {
+                    "label": asian_label,
                     "home": {"odd": ah_home, "prob": round(probs_ah["home"], 4)},
                     "away": {"odd": ah_away, "prob": round(probs_ah["away"], 4)},
                 },
@@ -312,6 +319,103 @@ class MatchOddsFeaturedView(APIView):
         }
 
         return Response(result, status=200)
+
+
+class MatchOddsAllView(APIView):
+    """
+    Retorna mercados principais de /odds/1/all com odds decimais e probs normalizadas por mercado.
+    """
+
+    @staticmethod
+    def fractional_to_decimal(frac: str) -> float:
+        num, den = frac.split("/")
+        return 1 + (float(num) / float(den))
+
+    @staticmethod
+    def implied_probability(decimal_odd: float) -> float:
+        return 1 / decimal_odd
+
+    @staticmethod
+    def normalize_probabilities(prob_dict):
+        total = sum(prob_dict.values())
+        return (
+            {key: value / total for key, value in prob_dict.items()}
+            if total
+            else prob_dict
+        )
+
+    def _convert_market(self, market):
+        choices = market.get("choices") or []
+        if not choices:
+            return None
+
+        odds = {}
+        prob_raw = {}
+        for choice in choices:
+            name = choice.get("name")
+            frac = choice.get("fractionalValue")
+            if not name or not frac:
+                continue
+            dec = self.fractional_to_decimal(frac)
+            odds[name] = dec
+            prob_raw[name] = self.implied_probability(dec)
+
+        if not odds:
+            return None
+
+        probs = self.normalize_probabilities(prob_raw)
+        converted_choices = [
+            {"name": k, "odd": round(odds[k], 2), "prob": round(probs.get(k, 0), 4)}
+            for k in odds
+        ]
+
+        return {
+            "market_id": market.get("marketId"),
+            "market": market.get("marketName"),
+            "group": market.get("marketGroup"),
+            "period": market.get("marketPeriod"),
+            "label": market.get("choiceGroup"),
+            "choices": converted_choices,
+        }
+
+    def get(self, request, pk):
+        from jogos.models import Match
+
+        try:
+            match = Match.objects.get(pk=pk)
+        except Match.DoesNotExist:
+            return Response(
+                {"error": "Match not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not match.external_id:
+            return Response({"error": "Match does not have external_id"}, status=400)
+
+        url = f"https://www.sofascore.com/api/v1/event/{match.external_id}/odds/1/all"
+        local_headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+        try:
+            resp = requests.get(url, headers=local_headers, timeout=8)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            return Response(
+                {"error": "Failed to fetch odds", "details": str(exc)}, status=500
+            )
+
+        data = resp.json()
+        print(data)
+        markets_raw = data.get("markets") or []
+
+        converted = []
+        for market in markets_raw:
+            conv = self._convert_market(market)
+            if conv:
+                converted.append(conv)
+
+        return Response(
+            {"match_id": pk, "external_id": match.external_id, "markets": converted},
+            status=200,
+        )
 
 
 def sofascore_scrape_view(request):
@@ -375,3 +479,72 @@ def sofascore_scrape_view(request):
             log.append(f"Processado evento {event_id}")
 
     return JsonResponse({"status": "ok", "log": log})
+
+
+def model_comparison_view(request, match_id=None):
+    context = {}
+
+    # ---------------------------
+    # Visão por jogo (se existir)
+    # ---------------------------
+    if match_id:
+        match = get_object_or_404(Match, pk=match_id)
+
+        evaluations = MatchModelEvaluation.objects.filter(match=match)
+
+        markets = {}
+        for e in evaluations:
+            markets.setdefault(e.market, {})
+            key = e.model_version.replace(".", "_")  # v3.1 -> v3_1
+            markets[e.market][key] = e.result
+            markets[e.market]["real"] = e.real_value
+
+        # Decide vencedor do jogo
+        score = {"v3_1": 0, "v3_2": 0}
+        for m in markets.values():
+            for model in ["v3_1", "v3_2"]:
+                if m.get(model) == "hit":
+                    score[model] += 1
+
+        winner = (
+            "v3.1"
+            if score["v3_1"] > score["v3_2"]
+            else "v3.2" if score["v3_2"] > score["v3_1"] else "Empate"
+        )
+
+        context.update(
+            {
+                "match": match,
+                "markets": markets,
+                "winner_model": winner,
+            }
+        )
+
+    # ---------------------------
+    # Visão agregada (performance geral)
+    # ---------------------------
+    summary_qs = MatchModelEvaluation.objects.values(
+        "model_version", "market"
+    ).annotate(
+        total=Count("id"),
+        hits=Count("id", filter=Q(result="hit")),
+    )
+
+    summary = {}
+    for row in summary_qs:
+        market = row["market"]
+        model_key = row["model_version"].replace(".", "_")  # v3.1 -> v3_1
+
+        summary.setdefault(market, {})
+        summary[market][model_key] = (
+            round(100 * row["hits"] / row["total"], 1) if row["total"] else 0
+        )
+
+    # garante que ambos existam (evita None no template)
+    for market in summary.values():
+        market.setdefault("v3_1", 0)
+        market.setdefault("v3_2", 0)
+
+    context["summary"] = summary
+
+    return render(request, "betting/model_comparison.html", context)

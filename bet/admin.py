@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from bet.models import AllowedLeague, Bankroll, BankrollHistory, Bet
+from bet.models import (
+    AllowedLeague,
+    Bankroll,
+    BankrollHistory,
+    Bet,
+    MatchModelEvaluation,
+)
 
 
 class BankrollHistoryInline(admin.TabularInline):
@@ -49,3 +55,30 @@ class AllowedLeagueAdmin(admin.ModelAdmin):
     list_display = ("name", "active")
     list_editable = ("active",)
     search_fields = ("name",)
+
+
+@admin.register(MatchModelEvaluation)
+class MatchModelEvaluationAdmin(admin.ModelAdmin):
+    list_display = (
+        "match",
+        "model_version",
+        "market",
+        "result",
+        "probability",
+        "real_value",
+        "created_at",
+    )
+
+    list_filter = (
+        "model_version",
+        "market",
+        "result",
+    )
+
+    search_fields = (
+        "match__id",
+        "match__home_team__name",
+        "match__away_team__name",
+    )
+
+    ordering = ("-created_at",)

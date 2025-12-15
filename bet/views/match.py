@@ -247,16 +247,25 @@ def parse_summary(raw):
         return {}
 
     insights = []
-    ins = re.search(r"?? INSIGHTS(.*?)(??|$)", raw, flags=re.S)
+    ins = re.search(r"INSIGHTS(.*?)(?:\n\s*\n|\Z)", raw, flags=re.S | re.I)
     if ins:
         for line in ins.group(1).splitlines():
             line = line.strip()
             if line.startswith("-"):
                 insights.append(line.lstrip("- ").strip())
 
-    forecast = extract_balanced_json(raw, "?? PREVISÇO AUTOMµTICA") or {}
-    streaks = extract_balanced_json(raw, "?? STREAKS") or {}
-    standings = extract_balanced_json(raw, "?? STANDINGS") or {}
+    def first_json(options):
+        for title in options:
+            data = extract_balanced_json(raw, title)
+            if data:
+                return data
+        return {}
+
+    forecast = first_json(
+        ["?? PREVISÇO AUTOMµTICA", "?? PREVISÃO AUTOMÁTICA", "PREVISÃO AUTOMÁTICA"]
+    )
+    streaks = first_json(["?? STREAKS", "STREAKS"])
+    standings = first_json(["?? STANDINGS", "STANDINGS"])
 
     return {
         "insights": insights,
@@ -321,6 +330,83 @@ def _apply_streak_impact(base_analysis, streak_analysis):
     return base_analysis
 
 
+def _pregame_score(pregame_form):
+    """Calcula vantagem pregame a partir de posição e forma recente (5 jogos)."""
+    if not pregame_form:
+        return {"diff": 0, "home_score": 0, "away_score": 0, "reasons": []}
+
+    home = pregame_form.get("home") or {}
+    away = pregame_form.get("away") or {}
+
+    def form_points(form_list):
+        points = {"W": 3, "D": 1, "L": 0}
+        return sum(points.get(x, 0) for x in form_list or [])
+
+    home_form_pts = form_points(home.get("form"))
+    away_form_pts = form_points(away.get("form"))
+
+    home_pos = home.get("position") or 0
+    away_pos = away.get("position") or 0
+
+    home_score = home_form_pts + max(0, 30 - home_pos) * 0.2
+    away_score = away_form_pts + max(0, 30 - away_pos) * 0.2
+
+    diff = home_score - away_score
+    reasons = []
+    if home_form_pts or away_form_pts:
+        reasons.append(f"Forma (5j): H {home_form_pts} pts vs A {away_form_pts} pts.")
+    if home_pos and away_pos:
+        reasons.append(f"Posição: H {home_pos}º vs A {away_pos}º.")
+
+    return {
+        "diff": diff,
+        "home_score": home_score,
+        "away_score": away_score,
+        "reasons": reasons,
+    }
+
+
+def _pregame_edge(pregame_form):
+    """Retorna leitura simples de favoritismo baseada em posição/forma."""
+    if not pregame_form:
+        return {}
+
+    home = pregame_form.get("home") or {}
+    away = pregame_form.get("away") or {}
+
+    home_pos = home.get("position")
+    away_pos = away.get("position")
+    home_pts = float(home.get("points") or 0)
+    away_pts = float(away.get("points") or 0)
+
+    edge = "Equilibrado"
+    reason = "Sem vantagem clara."
+
+    if home_pos and away_pos:
+        diff = away_pos - home_pos
+        if diff >= 3:
+            edge = "Mandante favorito"
+            reason = (
+                f"Mandante melhor colocado ({home_pos}º) que visitante ({away_pos}º)."
+            )
+        elif diff <= -3:
+            edge = "Visitante favorito"
+            reason = (
+                f"Visitante melhor colocado ({away_pos}º) que mandante ({home_pos}º)."
+            )
+
+    if edge == "Equilibrado" and home_pts and away_pts:
+        diff_pts = home_pts - away_pts
+        if diff_pts >= 3:
+            edge = "Mandante levemente favorito"
+            reason = f"Mandante soma {home_pts} pts vs {away_pts} pts."
+        elif diff_pts <= -3:
+            edge = "Visitante levemente favorito"
+            reason = f"Visitante soma {away_pts} pts vs {home_pts} pts."
+
+    return {"edge": edge, "reason": reason}
+
+
 def match_detail(request, pk):
     match = get_object_or_404(
         Match.objects.select_related("home_team", "away_team", "season"), pk=pk
@@ -332,9 +418,28 @@ def match_detail(request, pk):
     stats, summary = _parse_match_summary(match)
     streak_analysis = analyzer.analyze_streaks(summary.get("streaks", {}))
 
+    sofascore = SofaScore()
     base_analysis = _apply_streak_impact(
-        SofaScore().get_analise_event(match), streak_analysis
+        sofascore.get_analise_event(match), streak_analysis
     )
+    pregame_form = (
+        sofascore.get_pregame_form(match.external_id) if match.external_id else {}
+    )
+    pregame_edge = _pregame_edge(pregame_form)
+    pregame_score = _pregame_score(pregame_form)
+
+    # Ajusta probabilidades básicas usando vantagem pregame
+    if base_analysis and "probabilities" in base_analysis:
+        probs = base_analysis["probabilities"]
+        adj = max(-8, min(8, pregame_score["diff"]))  # clamp impacto
+        probs["home"] = max(10, min(90, probs.get("home", 33) + adj))
+        probs["away"] = max(10, min(90, probs.get("away", 33) - adj))
+        base_analysis["probabilities"] = probs
+        base_analysis["rationale"] = base_analysis.get("rationale", [])
+        base_analysis["rationale"].append(
+            f"Vantagem pregame (forma+posição): diff {pregame_score['diff']:.1f}. "
+            + " ".join(pregame_score["reasons"])
+        )
 
     context = {
         "match": match,
@@ -347,6 +452,9 @@ def match_detail(request, pk):
         "stat_labels": STAT_LABELS,
         "current_home": match.home_team_score or 0,
         "current_away": match.away_team_score or 0,
+        "pregame_form": pregame_form,
+        "pregame_edge": pregame_edge,
+        "pregame_score": pregame_score,
     }
 
     return render(request, "betting/match_detail.html", context)
@@ -357,6 +465,13 @@ def post_status(request):
         if request.method == "POST":
             event_id = request.POST.get("event_id")
             match = Match.objects.get(id=event_id)
+            print(match.date, timezone.now())
+
+            if match.date and match.date > timezone.now():
+                return JsonResponse(
+                    {"error": "Match already started/finished"}, status=400
+                )
+
             snapshot = SofaScore().get_stats(event_id)
 
             if snapshot is None:

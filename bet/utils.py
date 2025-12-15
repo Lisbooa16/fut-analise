@@ -1,8 +1,9 @@
+import json
 from decimal import Decimal
 
 from django.db import models
 
-from bet.models import Bet
+from bet.models import Bet, MatchModelEvaluation
 
 
 def generate_bankroll_alerts(bankroll):
@@ -274,3 +275,134 @@ class MatchAnalyzer:
             "insights": insights,
             "suggestions": list(set(suggestions)),
         }
+
+
+def safe_json(value):
+    """Garante que JSONField string vire dict."""
+    if isinstance(value, dict) or isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return {}
+    return {}
+
+
+def get_stat(stats_json, key, period="ALL"):
+    if not stats_json:
+        return None, None
+
+    data = safe_json(stats_json)
+
+    for block in data.get("statistics", []):
+        if block.get("period") != period:
+            continue
+
+        for group in block.get("groups", []):
+            for item in group.get("statisticsItems", []):
+                if item.get("key") == key:
+                    return item.get("homeValue"), item.get("awayValue")
+
+    return None, None
+
+
+def get_real_outcome(match):
+    home_goals = match.home_team_score if match.home_team_score else 0
+    away_goals = match.away_team_score if match.away_team_score else 0
+
+    home_corners, away_corners = get_stat(match.stats_json, "cornerKicks")
+
+    return {
+        "result": (
+            "home"
+            if home_goals > away_goals
+            else "away" if away_goals > home_goals else "draw"
+        ),
+        "over25": (home_goals + away_goals) > 2,
+        "under25": (home_goals + away_goals) <= 2,
+        "btts": home_goals > 0 and away_goals > 0,
+        "corners_over10": ((home_corners or 0) + (away_corners or 0)) > 10,
+    }
+
+
+def evaluate_market(prob, real, positive_label=True):
+    """
+    positive_label=True:
+        prob alta => evento acontece
+    positive_label=False:
+        prob alta => evento NÃO acontece
+    """
+
+    if prob >= 0.60 and real == positive_label:
+        return "hit"
+    if prob <= 0.40 and real != positive_label:
+        return "hit"
+    if 0.45 <= prob <= 0.55:
+        return "neutral"
+    return "miss"
+
+
+MARKET_CONFIG = {
+    "result": {
+        "prob_key": "prob_result",
+    },
+    "over25": {
+        "prob_key": "prob_over25",
+        "positive_label": True,
+    },
+    "under25": {
+        "prob_key": "prob_under25",
+        "positive_label": True,
+    },
+    "btts": {
+        "prob_key": "prob_btts",
+        "positive_label": True,
+    },
+    "corners_over10": {
+        "prob_key": "prob_corners_over10",
+        "positive_label": True,
+    },
+}
+
+
+def evaluate_match_models(match, analysis_v31, analysis_v32):
+    real = get_real_outcome(match)
+
+    for model_version, analysis in [
+        ("v3.1", analysis_v31),
+        ("v3.2", analysis_v32),
+    ]:
+        for market, config in MARKET_CONFIG.items():
+
+            # -------- probabilidade prevista --------
+            if market == "result":
+                prob = max(analysis["prob_result"].values())
+                real_value = real["result"]
+
+            elif market == "first_goal":
+                prob = analysis["prob_first_goal"][real["first_goal"]]
+                real_value = real["first_goal"]
+
+            else:
+                prob = analysis[config["prob_key"]]
+                real_value = str(real[market])
+
+            # -------- avaliar --------
+            result = evaluate_market(
+                prob=prob,
+                real=real[market] if market != "result" else None,
+                positive_label=config.get("positive_label", True),
+            )
+
+            # -------- salvar (idempotente) --------
+            MatchModelEvaluation.objects.update_or_create(
+                match=match,
+                model_version=model_version,
+                market=market,
+                defaults={
+                    "result": result,
+                    "probability": prob,
+                    "real_value": real_value,
+                },
+            )

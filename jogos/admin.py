@@ -2,6 +2,7 @@ import math
 
 from django.contrib import admin, messages
 
+from bet.utils import evaluate_match_models
 from jogos.models import League, Match, MatchStats, RunningToday, Season, Team
 
 # Register your models here.
@@ -191,7 +192,42 @@ def analise_escanteios(general, h2h):
     }
 
 
+def analise_escanteios(general, h2h):
+    # Extrair streaks de escanteios Over/Under
+    over_streaks = []
+    under_streaks = []
+
+    for s in general + h2h:
+        name = s.get("name", "").lower()
+        value = parse_ratio(s.get("value", "0"))
+
+        if "over 10.5" in name or "more than 10.5" in name:
+            over_streaks.append(value)
+
+        if "under 10.5" in name or "less than 10.5" in name:
+            under_streaks.append(value)
+
+    # Caso não exista nenhum dado → probabilidade neutra
+    if not over_streaks and not under_streaks:
+        return {"prob_over10": 0.50, "prob_under10": 0.50}
+
+    # Calcular médias reais
+    over_avg = sum(over_streaks) / len(over_streaks) if over_streaks else 0.40
+    under_avg = sum(under_streaks) / len(under_streaks) if under_streaks else 0.40
+
+    # Balanceamento
+    prob_over10 = (over_avg + (1 - under_avg)) / 2
+    prob_over10 = max(0.05, min(0.95, prob_over10))
+    prob_under10 = 1 - prob_over10
+
+    return {"prob_over10": prob_over10, "prob_under10": prob_under10}
+
+
 def gerar_analise_v3(match):
+
+    def smooth_streak(x):
+        return 0.5 + (x - 0.5) * 0.6  # puxa para a média e reduz exageros
+
     # ---------- Dados básicos ----------
     event = safe_json(match.raw_event_json)
     streaks = safe_json(match.streaks_json)
@@ -217,18 +253,17 @@ def gerar_analise_v3(match):
     raw_home_score = score_from_streaks(home_streaks)
     raw_away_score = score_from_streaks(away_streaks)
 
-    # ---------- Normalização (ESSENCIAL!) ----------
-    # Converte score para uma escala [-1.5, +1.5]
+    # ---------- Normalização ----------
     def normalize_score(x):
         return max(-1.5, min(1.5, x / 3))
 
-    home_score = normalize_score(raw_home_score) + 0.2  # leve vantagem de mando
+    home_score = normalize_score(raw_home_score) + 0.2
     away_score = normalize_score(raw_away_score)
 
     stronger = home_name if home_score > away_score else away_name
 
-    # ---------- Softmax temperado (calibrado) ----------
-    temperature = 2.2  # controla suavidade do softmax
+    # ---------- Softmax temperado ----------
+    temperature = 2.2
     eh = math.exp(home_score / temperature)
     ed = math.exp((home_score + away_score) / 2 / temperature)
     ea = math.exp(away_score / temperature)
@@ -240,99 +275,108 @@ def gerar_analise_v3(match):
 
     # ---------- Probabilidades Over/Under ----------
     recent_over = max(
-        [parse_ratio(s["value"]) for s in general if "2.5" in s["name"].lower()] or [0]
+        [parse_ratio(s["value"]) for s in general if "2.5" in s["name"].lower()]
+        or [0.33]
     )
     h2h_over = max(
-        [parse_ratio(s["value"]) for s in h2h if "2.5" in s["name"].lower()] or [0]
+        [parse_ratio(s["value"]) for s in h2h if "2.5" in s["name"].lower()] or [0.33]
     )
     h2h_under = max(
         [parse_ratio(s["value"]) for s in h2h if "less than 2.5" in s["name"].lower()]
-        or [0]
+        or [0.33]
     )
 
-    # Novo peso — mais realista:
-    prob_over25 = 0.45 * recent_over + 0.45 * h2h_over + 0.10 * (1 - h2h_under)
-    prob_over25 = max(0.05, min(0.95, prob_over25))
+    prob_over25 = 0.33 * recent_over + 0.33 * h2h_over + 0.34 * (1 - h2h_under)
+
+    prob_over25 = max(0.10, min(0.90, prob_over25))
     prob_under25 = 1 - prob_over25
 
     # ---------- BTTS ----------
     recent_btts = max(
         [parse_ratio(s["value"]) for s in general if "both teams" in s["name"].lower()]
-        or [0]
+        or [0.20]
     )
     h2h_btts = max(
         [parse_ratio(s["value"]) for s in h2h if "both teams" in s["name"].lower()]
-        or [0]
+        or [0.20]
     )
-
-    prob_btts = 0.5 * recent_btts + 0.5 * h2h_btts
-    prob_btts = max(0.05, min(0.95, prob_btts))
+    prob_btts = max(0.05, min(0.95, 0.5 * recent_btts + 0.5 * h2h_btts))
 
     # ---------- Quem marca primeiro ----------
-    away_first = max(
+    away_first_raw = max(
         [
             parse_ratio(s["value"])
             for s in general
             if s.get("team") == "away" and "first to score" in s["name"].lower()
         ]
-        or [0]
+        or [0.50]
     )
-    home_first = max(
+    home_first_raw = max(
         [
             parse_ratio(s["value"])
             for s in general
             if s.get("team") == "home" and "first to score" in s["name"].lower()
         ]
-        or [0]
+        or [0.50]
     )
-    home_first_concede = max(
+    home_first_concede_raw = max(
         [
             parse_ratio(s["value"])
             for s in general
             if s.get("team") == "home" and "first to concede" in s["name"].lower()
         ]
-        or [0]
+        or [0.50]
     )
 
-    # Nova fórmula calibrada:
-    raw_away_first = (
-        0.55 * away_first + 0.25 * home_first_concede + 0.20 * (1 - home_first)
-    )
-    prob_away_first = max(0.10, min(0.90, raw_away_first))
-    prob_home_first = 1 - prob_away_first
+    away_first = smooth_streak(away_first_raw)
+    home_first = smooth_streak(home_first_raw)
+    home_first_concede = smooth_streak(home_first_concede_raw)
 
-    # ---------- Contradições ----------
-    contradicao_h2h_gols = h2h_under >= 0.7 and prob_over25 >= 0.6
+    raw_home_first = (
+        0.55 * home_first + 0.25 * (1 - away_first) + 0.20 * (1 - home_first_concede)
+    )
+
+    prob_home_first = max(0.15, min(0.85, raw_home_first))
+    prob_away_first = 1 - prob_home_first
+
+    # ---------- Ajuste na probabilidade de vitória ----------
+    boost_home = 0.12 * (prob_home_first - 0.5)
+    boost_away = 0.12 * (prob_away_first - 0.5)
+
+    p_home = max(0.001, p_home + boost_home)
+    p_away = max(0.001, p_away + boost_away)
+
+    total = p_home + p_draw + p_away
+    p_home /= total
+    p_draw /= total
+    p_away /= total
 
     # ---------- Insights ----------
     insights = []
 
-    # momento
-    if away_score > home_score + 0.6:
-        insights.append(f"{away_name} chega em fase claramente superior.")
-    elif away_score > home_score:
-        insights.append(f"{away_name} chega em leve melhor fase.")
-    elif home_score > away_score + 0.6:
-        insights.append(f"{home_name} chega em fase claramente superior.")
-    else:
-        insights.append("Momento relativamente equilibrado entre as equipes.")
+    if prob_home_first > 0.70 and p_home < 0.45:
+        insights.append(
+            f"{home_name} tende a marcar cedo, mas perde força ao longo do jogo."
+        )
 
-    # padrões
-    if prob_btts >= 0.65:
-        insights.append("Boa tendência para *Ambas Marcam (BTTS)*.")
-    if prob_over25 >= 0.65:
-        insights.append("Boa tendência de *Over 2.5 gols*.")
+    # Momento
+    if abs(home_score - away_score) < 0.3:
+        insights.append("Momento relativamente equilibrado entre as equipes.")
+    else:
+        stronger_name = home_name if home_score > away_score else away_name
+        insights.append(f"{stronger_name} chega em melhor fase recente.")
+
+    # Padrões
     if prob_under25 >= 0.65:
-        insights.append("Tendência para *Under 2.5 gols*.")
+        insights.append("Tendência para Under 2.5 gols.")
+    if prob_over25 >= 0.65:
+        insights.append("Tendência para Over 2.5 gols.")
+    if prob_btts >= 0.65:
+        insights.append("Boa tendência para Ambas Marcam (BTTS).")
+    if prob_home_first >= 0.60:
+        insights.append(f"Tendência de {home_name} marcar o primeiro gol.")
     if prob_away_first >= 0.60:
         insights.append(f"Tendência de {away_name} marcar o primeiro gol.")
-    elif prob_home_first >= 0.60:
-        insights.append(f"Tendência de {home_name} marcar o primeiro gol.")
-
-    if contradicao_h2h_gols:
-        insights.append(
-            "H2H indica poucos gols, mas o momento recente sugere jogo mais aberto."
-        )
 
     # ---------- Sugestões ----------
     sugestoes = []
@@ -340,14 +384,14 @@ def gerar_analise_v3(match):
         sugestoes.append(f"Over 2.5 gols – {prob_label(prob_over25)}")
     if prob_btts > 0.70:
         sugestoes.append(f"BTTS – {prob_label(prob_btts)}")
+    if p_home > 0.55:
+        sugestoes.append(f"{home_name} DNB – {prob_label(p_home)}")
     if p_away > 0.55:
         sugestoes.append(f"{away_name} DNB – {prob_label(p_away)}")
-    elif p_home > 0.55:
-        sugestoes.append(f"{home_name} DNB – {prob_label(p_home)}")
 
-    # ---------- RESUMO FINAL ----------
+    # ---------- Resumo ----------
     resumo = f"""
-    📊 *Análise Automática V3.1 (calibrada)*
+📊 *Análise Automática V3.1 (calibrada)*
 
         *{home_name}* vs *{away_name}*
         Campeonato: *{tournament}*
@@ -389,10 +433,234 @@ def gerar_analise_v3(match):
         "prob_under25": prob_under25,
         "prob_btts": prob_btts,
         "prob_first_goal": {"home": prob_home_first, "away": prob_away_first},
-        "contradicao_h2h_gols": contradicao_h2h_gols,
+        "prob_corners_over10": esc["prob_over10"],
+        "prob_corners_under10": esc["prob_under10"],
         "insights": insights,
         "sugestoes": sugestoes,
         "resumo": resumo,
+    }
+
+
+def gerar_analise_v3_2(match):
+    import math
+
+    # ---------- Helpers ----------
+    def smooth_streak(x, agressivo=False):
+        if not agressivo:
+            return x
+        return 0.5 + (x - 0.5) * 0.7
+
+    def clamp(x, a, b):
+        return max(a, min(b, x))
+
+    # ---------- Dados ----------
+    event = safe_json(match.raw_event_json)
+    streaks = safe_json(match.streaks_json)
+
+    general = streaks.get("general", [])
+    h2h = streaks.get("head2head", [])
+
+    esc = analise_escanteios(general, h2h)
+
+    home_name = event.get("homeTeam", {}).get(
+        "name", getattr(match.home_team, "name", "Casa")
+    )
+    away_name = event.get("awayTeam", {}).get(
+        "name", getattr(match.away_team, "name", "Fora")
+    )
+    tournament = event.get("tournament", {}).get("name", "Desconhecido")
+    status = event.get("status", {}).get("description", "N/A")
+
+    is_pre_game = status.lower() in ["not started", "scheduled"]
+    data_strength = len(general) + len(h2h)
+
+    # ---------- Separar streaks ----------
+    home_streaks = [s for s in general if s.get("team") == "home"]
+    away_streaks = [s for s in general if s.get("team") == "away"]
+
+    # ---------- Scores ----------
+    raw_home_score = score_from_streaks(home_streaks)
+    raw_away_score = score_from_streaks(away_streaks)
+
+    def normalize_score(x):
+        return clamp(x / 3, -1.5, 1.5)
+
+    home_score = normalize_score(raw_home_score) + (0.25 if is_pre_game else 0.15)
+    away_score = normalize_score(raw_away_score)
+
+    # Boost se diferença clara no pré-jogo
+    if is_pre_game and raw_home_score - raw_away_score > 1.0:
+        home_score += 0.25
+    if is_pre_game and raw_away_score - raw_home_score > 1.0:
+        away_score += 0.25
+
+    stronger = home_name if home_score > away_score else away_name
+
+    # ---------- Softmax ----------
+    if is_pre_game:
+        temperature = 1.4 if data_strength < 8 else 1.7
+    else:
+        temperature = 2.2
+
+    eh = math.exp(home_score / temperature)
+    ed = math.exp((home_score + away_score) / 2 / temperature)
+    ea = math.exp(away_score / temperature)
+
+    total = eh + ed + ea
+    p_home = eh / total
+    p_draw = ed / total
+    p_away = ea / total
+
+    # ---------- Over / Under ----------
+    recent_over = max(
+        [parse_ratio(s["value"]) for s in general if "2.5" in s["name"].lower()]
+        or [0.40 if is_pre_game else 0.33]
+    )
+    h2h_over = max(
+        [parse_ratio(s["value"]) for s in h2h if "2.5" in s["name"].lower()]
+        or [0.40 if is_pre_game else 0.33]
+    )
+    h2h_under = max(
+        [parse_ratio(s["value"]) for s in h2h if "less than 2.5" in s["name"].lower()]
+        or [0.35]
+    )
+
+    prob_over25 = 0.35 * recent_over + 0.35 * h2h_over + 0.30 * (1 - h2h_under)
+    prob_over25 = clamp(prob_over25, 0.15, 0.85)
+    prob_under25 = 1 - prob_over25
+
+    # ---------- BTTS ----------
+    recent_btts = max(
+        [parse_ratio(s["value"]) for s in general if "both teams" in s["name"].lower()]
+        or [0.35 if is_pre_game else 0.25]
+    )
+    h2h_btts = max(
+        [parse_ratio(s["value"]) for s in h2h if "both teams" in s["name"].lower()]
+        or [0.35 if is_pre_game else 0.25]
+    )
+
+    prob_btts = clamp(0.55 * recent_btts + 0.45 * h2h_btts, 0.10, 0.90)
+
+    # ---------- Primeiro gol ----------
+    away_first_raw = max(
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if s.get("team") == "away" and "first to score" in s["name"].lower()
+        ]
+        or [0.50]
+    )
+    home_first_raw = max(
+        [
+            parse_ratio(s["value"])
+            for s in general
+            if s.get("team") == "home" and "first to score" in s["name"].lower()
+        ]
+        or [0.50]
+    )
+
+    home_first = smooth_streak(home_first_raw, agressivo=not is_pre_game)
+    away_first = smooth_streak(away_first_raw, agressivo=not is_pre_game)
+
+    prob_home_first = clamp(0.55 * home_first + 0.45 * (1 - away_first), 0.20, 0.80)
+    prob_away_first = 1 - prob_home_first
+
+    # ---------- Ajuste final ----------
+    boost_home = 0.10 * (prob_home_first - 0.5)
+    boost_away = 0.10 * (prob_away_first - 0.5)
+
+    p_home = clamp(p_home + boost_home, 0.05, 0.85)
+    p_away = clamp(p_away + boost_away, 0.05, 0.85)
+
+    total = p_home + p_draw + p_away
+    p_home /= total
+    p_draw /= total
+    p_away /= total
+
+    # ---------- Insights ----------
+    insights = []
+
+    if data_strength < 6:
+        insights.append("Análise baseada em dados limitados para este confronto.")
+
+    if abs(home_score - away_score) < 0.25:
+        insights.append("Momento relativamente equilibrado entre as equipes.")
+    else:
+        insights.append(f"{stronger} chega em melhor fase recente.")
+
+    if prob_under25 >= 0.65:
+        insights.append("Tendência para Under 2.5 gols.")
+    if prob_over25 >= 0.65:
+        insights.append("Tendência para Over 2.5 gols.")
+    if prob_btts >= 0.65:
+        insights.append("Boa tendência para Ambas Marcam (BTTS).")
+    if prob_home_first >= 0.60:
+        insights.append(f"Tendência de {home_name} marcar o primeiro gol.")
+    if prob_away_first >= 0.60:
+        insights.append(f"Tendência de {away_name} marcar o primeiro gol.")
+
+    # ---------- Sugestões ----------
+    sugestoes = []
+    if prob_over25 > 0.70:
+        sugestoes.append(f"Over 2.5 gols – {prob_label(prob_over25)}")
+    if prob_btts > 0.70:
+        sugestoes.append(f"BTTS – {prob_label(prob_btts)}")
+    if p_home > 0.55:
+        sugestoes.append(f"{home_name} DNB – {prob_label(p_home)}")
+    if p_away > 0.55:
+        sugestoes.append(f"{away_name} DNB – {prob_label(p_away)}")
+
+    # ---------- Resumo ----------
+    resumo = f"""
+📊 *Análise Automática V3.2* ({'Pré-jogo' if is_pre_game else 'Pós-jogo'})
+
+        *{home_name}* vs *{away_name}*
+        Campeonato: *{tournament}*
+        Status: `{status}`
+
+        *Força do Momento*
+        - {home_name}: `{home_score:.2f}`
+        - {away_name}: `{away_score:.2f}`
+        🔥 Mais forte: *{stronger}*
+
+        *Probabilidades*
+        - Vitória {home_name}: {prob_label(p_home)}
+        - Empate: {prob_label(p_draw)}
+        - Vitória {away_name}: {prob_label(p_away)}
+
+        - Over 2.5: {prob_label(prob_over25)}
+        - Under 2.5: {prob_label(prob_under25)}
+        - BTTS: {prob_label(prob_btts)}
+        - Primeiro gol {home_name}: {prob_label(prob_home_first)}
+        - Primeiro gol {away_name}: {prob_label(prob_away_first)}
+
+        *Escanteios*
+        - Over 10.5: {prob_label(esc["prob_over10"])}
+        - Under 10.5: {prob_label(esc["prob_under10"])}
+
+        *Insights*
+        {chr(10).join(f"- {i}" for i in insights)}
+
+        *Mercados fortes* (não é recomendação)
+        {chr(10).join(f"- {s}" for s in sugestoes) or "- Nenhum mercado forte."}
+    """.strip()
+
+    return {
+        "home_score": home_score,
+        "away_score": away_score,
+        "stronger": stronger,
+        "prob_result": {"home_win": p_home, "draw": p_draw, "away_win": p_away},
+        "prob_over25": prob_over25,
+        "prob_under25": prob_under25,
+        "prob_btts": prob_btts,
+        "prob_first_goal": {"home": prob_home_first, "away": prob_away_first},
+        "prob_corners_over10": esc["prob_over10"],
+        "prob_corners_under10": esc["prob_under10"],
+        "insights": insights,
+        "sugestoes": sugestoes,
+        "resumo": resumo,
+        "model_version": "3.2",
+        "mode": "pre_game" if is_pre_game else "post_game",
     }
 
 
@@ -541,7 +809,9 @@ class MatchAdmin(admin.ModelAdmin):
         "gerar_analise_e_enviar",
         "action_gerar_analise_v2",
         "gerar_analise_v3_action",
+        "gerar_analise_v3_2_action",
         "set_nao_finalizado",
+        "action_evaluate",
     ]
 
     list_filter = (
@@ -646,6 +916,13 @@ class MatchAdmin(admin.ModelAdmin):
             f"Análises geradas e enviadas para o Telegram ({enviados} jogo(s))!",
         )
 
+    def action_evaluate(self, request, queryset):
+        for match in queryset:
+            analysis_v31 = gerar_analise_v3(match)
+            analysis_v32 = gerar_analise_v3_2(match)
+
+            evaluate_match_models(match, analysis_v31, analysis_v32)
+
     def action_gerar_analise_v2(self, request, queryset):
         enviados = 0
 
@@ -680,6 +957,23 @@ class MatchAdmin(admin.ModelAdmin):
             level=messages.SUCCESS,
         )
 
+    def gerar_analise_v3_2_action(self, request, queryset):
+        count = 0
+
+        for match in queryset:
+            analise = gerar_analise_v3_2(match)
+            match.analise = analise
+            match.save(update_fields=["analise"])
+
+            telegram_send(analise["resumo"])
+            count += 1
+
+        self.message_user(
+            request,
+            f"Análise V3 gerada e enviada para {count} jogo(s).",
+            level=messages.SUCCESS,
+        )
+
     def set_nao_finalizado(self, request, queryset):
         for match in queryset:
             match.finalizado = False
@@ -693,6 +987,10 @@ class MatchAdmin(admin.ModelAdmin):
 
     gerar_analise_v3_action.short_description = (
         "Gerar análise V3 + enviar para o Telegram"
+    )
+    action_evaluate.short_description = "Evaluate analise"
+    gerar_analise_v3_2_action.short_description = (
+        "Gerar análise V3.2 + enviar para o Telegram"
     )
     set_nao_finalizado.short_description = "Não Finalizada"
 
