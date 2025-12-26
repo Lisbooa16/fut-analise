@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+
+  <a href="{% url 'team_list' %}" class="btn btn-outline-secondary btn-sm mb-3">
+    ← Voltar para times
+  </a>
+
+  <div class="d-flex align-items-end justify-content-between flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">{{ team.name }}</h2>
+      <div class="text-muted">Jogos analisados: {{ matches_count }}</div>
+    </div>
+  </div>
+
+
+  <!-- PREVISÃO -->
+  <div class="row g-3 mt-3">
+    {% for k, p in predictions.items %}
+      <div class="col-md-3 col-sm-6">
+        <div class="card bg-dark text-light h-100 border-secondary">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <h6 class="mb-2">{{ p.title }}</h6>
+              <span class="badge bg-secondary">{{ p.label }}</span>
+            </div>
+
+            <div class="display-6 fw-bold">
+              {{ p.prob_percent }}%
+            </div>
+
+            <div class="text-muted small mt-2">
+              {{ p.note }}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- TABELA -->
+  <div class="card bg-dark text-light border-secondary mt-4">
+    <div class="card-body">
+      <h5 class="mb-3">Médias do time (ALL)</h5>
+
+      <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Estatística</th>
+              <th class="text-end">Média</th>
+              <th class="text-end">Mín</th>
+              <th class="text-end">Máx</th>
+              <th class="text-end">Jogos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key, stat in stats.items %}
+              <tr>
+                <td class="text-nowrap">{{ key }}</td>
+                <td class="text-end">{{ stat.avg }}</td>
+                <td class="text-end">{{ stat.min }}</td>
+                <td class="text-end">{{ stat.max }}</td>
+                <td class="text-end">{{ stat.games }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

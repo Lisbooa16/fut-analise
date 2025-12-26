@@ -132,7 +132,7 @@ class SofaScore:
         return self._captcha_token
 
     @staticmethod
-    def generate_deep_insights(stats):
+    def generate_deep_insights(match, stats):
         if not stats or "statistics" not in stats or not stats["statistics"]:
             return []
 
@@ -150,6 +150,54 @@ class SofaScore:
             return default
 
         insights = []
+
+        if match.sport == "basketball":
+            insights = []
+
+            if not stats:
+                return insights
+
+            # scores
+            score_home = stats.get("points", {}).get("home", 0)
+            score_away = stats.get("points", {}).get("away", 0)
+            total = score_home + score_away
+            diff = score_home - score_away
+
+            # períodos
+            q1 = stats.get("periods", {}).get("q1")
+            q2 = stats.get("periods", {}).get("q2")
+            q3 = stats.get("periods", {}).get("q3")
+            q4 = stats.get("periods", {}).get("q4")
+
+            # domínio
+            if diff >= 15:
+                insights.append("Mandante controla o jogo com vantagem ampla.")
+            elif diff <= -15:
+                insights.append("Visitante domina a partida com folga.")
+            elif abs(diff) <= 5:
+                insights.append("Jogo muito equilibrado, decidido em detalhes.")
+
+            # ritmo / total de pontos
+            if total >= 230:
+                insights.append("Ritmo extremamente alto, jogo muito ofensivo.")
+            elif total >= 215:
+                insights.append("Ritmo alto, tendência clara de over em pontos.")
+            elif total <= 200:
+                insights.append("Ritmo baixo, partida mais truncada.")
+
+            # leitura por metades
+            if q1 and q2:
+                first_half = sum(q1) + sum(q2)
+                if first_half >= 115:
+                    insights.append("Primeiro tempo muito acelerado.")
+                elif first_half <= 95:
+                    insights.append("Primeiro tempo mais lento.")
+
+            # clutch
+            if q4 and abs(diff) <= 6:
+                insights.append("Jogo apertado entrando no último quarto (clutch).")
+
+            return insights
 
         # dados
         xg_h, xg_a = get("expectedGoals")
@@ -202,6 +250,8 @@ class SofaScore:
     @staticmethod
     def generate_insights(event, stats, match: Match):
         try:
+            if match.sport == "basketball":
+                event = event.get("event")
 
             def extract_stat(stats, key):
                 for period in stats.get("statistics", []):
@@ -225,6 +275,57 @@ class SofaScore:
             ht_away = as_.get("period1", 0)
             ft_home = hs.get("current", 0)
             ft_away = as_.get("current", 0)
+
+            if match.sport == "basketball":
+                q1_home = hs.get("period1", 0) or 0
+                q1_away = as_.get("period1", 0) or 0
+                q2_home = hs.get("period2", 0) or 0
+                q2_away = as_.get("period2", 0) or 0
+
+                score_home = hs.get("current", 0) or 0
+                score_away = as_.get("current", 0) or 0
+                total_points = score_home + score_away
+
+                first_half = q1_home + q1_away + q2_home + q2_away
+
+                insights = []
+
+                # domínio
+                if score_home > score_away + 12:
+                    insights.append(f"{home} controla o jogo com vantagem confortável.")
+                elif score_away > score_home + 12:
+                    insights.append(f"{away} domina a partida com boa vantagem.")
+                else:
+                    insights.append("Partida equilibrada até o momento.")
+
+                # ritmo
+                if first_half >= 110:
+                    insights.append("Ritmo muito alto, jogo ofensivo.")
+                elif first_half <= 90:
+                    insights.append("Jogo mais truncado e cadenciado.")
+                else:
+                    insights.append("Ritmo moderado.")
+
+                # leitura de pontos
+                if total_points >= 220:
+                    insights.append("Tendência forte de Over em pontos.")
+                elif total_points <= 205:
+                    insights.append("Cenário favorável a Under em pontos.")
+
+                return {
+                    "eventId": match.external_id,
+                    "slug": match.slug,
+                    "tournament": event.get("tournament", {}).get("name"),
+                    "homeTeam": home,
+                    "awayTeam": away,
+                    "placar": f"{score_home}-{score_away}",
+                    "stats": {
+                        "points": {"home": score_home, "away": score_away},
+                        "first_half": first_half,
+                        "total": total_points,
+                    },
+                    "insights": insights,
+                }
 
             # estatísticas
             xg_home, xg_away = extract_stat(stats, "expectedGoals")
@@ -402,7 +503,7 @@ class SofaScore:
         return float(momentum)
 
     @staticmethod
-    def parse_sofascore_stats(raw):
+    def parse_sofascore_stats(raw, sport="football"):
         """
         Converte o JSON de estatísticas do SofaScore no formato usado pelo LiveSnapshot.
         Usa os dados do período 'ALL'.
@@ -412,9 +513,87 @@ class SofaScore:
         stats_list = raw.get("statistics", [])
 
         if not isinstance(stats_list, list):
-            raise ValueError(
-                "Formato inválido: raw['statistics'] deveria ser uma lista."
-            )
+            raise ValueError()
+
+            # ======================================================
+            # 🏀 NBA
+            # ======================================================
+        if sport == "basketball":
+            period_all = next((p for p in stats_list if p.get("period") == "ALL"), None)
+
+            if not period_all:
+                raise ValueError("Período ALL não encontrado")
+            groups = period_all.get("groups", [])
+
+            def get(key, default=0):
+                for group in groups:
+                    for item in group.get("statisticsItems", []):
+                        if item.get("key") == key:
+                            return (
+                                float(item.get("homeValue", default)),
+                                float(item.get("awayValue", default)),
+                            )
+                return default, default
+
+            # -------- SCORING --------
+            ft_h, ft_a = get("freeThrowsScored")
+            fg2_h, fg2_a = get("twoPointersScored")
+            fg3_h, fg3_a = get("threePointersScored")
+            fg_h, fg_a = get("fieldGoalsScored")
+
+            # -------- POSSE / CONTROLE --------
+            reb_h, reb_a = get("rebounds")
+            off_reb_h, off_reb_a = get("offensiveRebounds")
+            def_reb_h, def_reb_a = get("defensiveRebounds")
+            ast_h, ast_a = get("assists")
+            tov_h, tov_a = get("turnovers")
+            stl_h, stl_a = get("steals")
+            blk_h, blk_a = get("blocks")
+            fouls_h, fouls_a = get("totalFouls")
+
+            # -------- RUNS / DOMÍNIO --------
+            max_run_h, max_run_a = get("maxPointsInARow")
+            biggest_lead_h, biggest_lead_a = get("biggestLead")
+
+            # tempo em liderança vem em segundos
+
+            lead_time_h, lead_time_a = get("timeSpentInLead", 0)
+
+            return {
+                # scoring
+                "ft_made_home": int(ft_h),
+                "ft_made_away": int(ft_a),
+                "fg2_made_home": int(fg2_h),
+                "fg2_made_away": int(fg2_a),
+                "fg3_made_home": int(fg3_h),
+                "fg3_made_away": int(fg3_a),
+                "fg_made_home": int(fg_h),
+                "fg_made_away": int(fg_a),
+                # controle
+                "rebounds_home": int(reb_h),
+                "rebounds_away": int(reb_a),
+                "off_reb_home": int(off_reb_h),
+                "off_reb_away": int(off_reb_a),
+                "def_reb_home": int(def_reb_h),
+                "def_reb_away": int(def_reb_a),
+                "assists_home": int(ast_h),
+                "assists_away": int(ast_a),
+                "turnovers_home": int(tov_h),
+                "turnovers_away": int(tov_a),
+                "steals_home": int(stl_h),
+                "steals_away": int(stl_a),
+                "blocks_home": int(blk_h),
+                "blocks_away": int(blk_a),
+                "fouls_home": int(fouls_h),
+                "fouls_away": int(fouls_a),
+                # runs / domínio
+                "max_run_home": int(max_run_h),
+                "max_run_away": int(max_run_a),
+                "biggest_lead_home": int(biggest_lead_h),
+                "biggest_lead_away": int(biggest_lead_a),
+                "time_leading_home": int(lead_time_h),
+                "time_leading_away": int(lead_time_a),
+            }
 
         # 2) Pega o período ALL
         period_all = None
@@ -657,6 +836,58 @@ class SofaScore:
                 "pressure_reason_home": "",
                 "pressure_reason_away": "",
             }
+
+        if match.sport == "basketball":
+            start = snaps[0]
+            end = snaps[-1]
+
+            # variação de pontos
+            delta_home = end.home_score - start.home_score
+            delta_away = end.away_score - start.away_score
+            delta_total = delta_home + delta_away
+
+            # ritmo por minuto
+            minutes = max(1, end.minute - start.minute)
+            pace = delta_total / minutes
+
+            avg_momentum = sum(
+                s.momentum_score for s in snaps if s.momentum_score is not None
+            ) / max(1, len(snaps))
+
+            pressure_home = delta_home >= 6
+            pressure_away = delta_away >= 6
+
+            high_pace = pace >= 2.5  # ~150 pts / 60min
+            clutch_run = abs(delta_home - delta_away) >= 8
+
+            analysis = {
+                "pressure_home": pressure_home,
+                "pressure_away": pressure_away,
+                "pressure_reason_home": (
+                    f"{match.home_team} anotou {delta_home} pts nos últimos {window} snapshots."
+                    if pressure_home
+                    else ""
+                ),
+                "pressure_reason_away": (
+                    f"{match.away_team} anotou {delta_away} pts nos últimos {window} snapshots."
+                    if pressure_away
+                    else ""
+                ),
+                "corners_signal": "",  # não existe na NBA
+                "goal_warning": (
+                    "Ritmo muito alto — pontos chegando rapidamente"
+                    if high_pace or avg_momentum >= 0.7
+                    else "Ritmo controlado"
+                ),
+                "over_15_signal": high_pace or avg_momentum >= 0.7,
+                "over_25_trend": (
+                    "Ritmo acelerando" if pace >= 3.0 else "Ritmo estável"
+                ),
+            }
+
+            match.analise = analysis
+            match.save(update_fields=["analise"])
+            return analysis
 
         # DIFERENÇAS ENTRE PRIMEIRO E ÚLTIMO SNAP
         print(snaps[-1].xg_home - snaps[0].xg_home)
@@ -913,14 +1144,14 @@ class SofaScore:
                 match.stats_json = raw
                 match.save(update_fields=["stats_json"])
                 minute = self.calculate_minute(event_raw)
-                stats = self.parse_sofascore_stats(raw)
+                stats = self.parse_sofascore_stats(raw, match.sport)
 
                 last_snap = (
                     LiveSnapshot.objects.filter(match=match).order_by("-minute").first()
                 )
 
                 result = self.generate_insights(event_raw, raw, match)
-                result["insights"].extend(self.generate_deep_insights(stats))
+                result["insights"].extend(self.generate_deep_insights(match, stats))
 
                 snapshot = LiveSnapshot.objects.create(
                     match=match, minute=minute, **stats
@@ -1411,3 +1642,126 @@ class SofaScore:
                 dict.fromkeys(suggestions)
             ),  # remove duplicatas mantendo ordem
         }
+
+    def expected_minutes(self, player, stats):
+        # estrela joga mais
+        name = player.get("name", "").lower()
+        base = 32
+
+        if name in ["stephen curry", "anthony davis", "jimmy butler"]:
+            base = 36
+
+        # se já jogou muito cedo, tende a manter rotação
+        minutes_played = stats.get("secondsPlayed", 0) / 60
+        if minutes_played > 18:
+            base += 2
+
+        return min(base, 40)
+
+    def player_stats(self, match):
+        event_id = match.external_id
+        streaks_url = f"{BASE}/event/{event_id}/lineups"
+        streaks_raw = self.get_json(streaks_url)
+
+        players_stats = []
+
+        def process_side(side_name):
+            side = streaks_raw.get(side_name, {})
+            for item in side.get("players", []):
+                stats = item.get("statistics")
+                player = item.get("player")
+
+                if not stats or not player:
+                    continue
+
+                seconds = stats.get("secondsPlayed", 0)
+                if seconds < 60:
+                    continue
+
+                minutes = seconds / 60
+                points = stats.get("points", 0)
+
+                fga = stats.get("fieldGoalAttempts", 0)
+                fta = stats.get("freeThrowAttempts", 0)
+
+                attempts_per_min = (fga + 0.44 * fta) / minutes if minutes > 0 else 0
+                ppm_raw = points / minutes if minutes > 0 else 0
+
+                # -----------------------
+                # 🔹 EXPECTED TOTAL MIN
+                # -----------------------
+                base_expected = self.expected_minutes(player, stats)
+
+                # nunca permitir expected muito acima do que já jogou
+                expected_total_minutes = min(
+                    base_expected, minutes + 14  # limite realista de minutos restantes
+                )
+
+                remaining_minutes = max(expected_total_minutes - minutes, 0)
+
+                # -----------------------
+                # 🔹 SHRINKAGE
+                # -----------------------
+                prior_ppm = 0.55
+                w = minutes / (minutes + 12)
+                ppm_adj = w * ppm_raw + (1 - w) * prior_ppm
+
+                # -----------------------
+                # 🔹 ROLE PLAYER / ROTATION DETECTOR
+                # -----------------------
+                position = (player.get("position") or "").upper()
+
+                is_low_minutes = minutes < 15
+                is_low_volume = attempts_per_min < 0.5
+                is_big_rotation_gap = base_expected > minutes + 16
+                is_rotation_position = (
+                    position in {"C", "CF", "F"} and attempts_per_min < 0.6
+                )
+
+                is_role_player = (
+                    (is_low_minutes and is_low_volume)
+                    or is_big_rotation_gap
+                    or is_rotation_position
+                )
+
+                # -----------------------
+                # 🔹 PROJEÇÃO FINAL
+                # -----------------------
+                projected_points = points + ppm_adj * remaining_minutes
+
+                max_extra = 8 if is_role_player else 18
+                projected_points = min(projected_points, points + max_extra)
+
+                # -----------------------
+                # 🔹 CONFIDENCE
+                # -----------------------
+                if is_role_player:
+                    confidence = "low"
+                elif minutes >= 22 and attempts_per_min >= 0.6:
+                    confidence = "high"
+                else:
+                    confidence = "medium"
+
+                players_stats.append(
+                    {
+                        "event_id": event_id,
+                        "team_side": side_name,
+                        "player_id": player.get("id"),
+                        "player_name": player.get("name"),
+                        "position": position,
+                        "minutes_played": round(minutes, 1),
+                        "points_now": points,
+                        "ppm": round(ppm_adj, 3),
+                        "attempts_per_min": round(attempts_per_min, 2),
+                        "expected_minutes": round(expected_total_minutes, 1),
+                        "projected_points": round(projected_points, 1),
+                        "range_low": round(projected_points * 0.85, 1),
+                        "range_high": round(projected_points * 1.15, 1),
+                        "confidence": confidence,
+                    }
+                )
+
+        process_side("home")
+        process_side("away")
+
+        return players_stats

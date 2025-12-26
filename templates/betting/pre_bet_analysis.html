@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5" style="max-width: 540px">
+
+  <h4 class="text-center mb-3">
+    {{ match.home_team.name }} x {{ match.away_team.name }}
+  </h4>
+
+  <form method="post" class="card p-4 shadow">
+    {% csrf_token %}
+
+    <div class="mb-3">
+      <label class="form-label">Mercado</label>
+      <select name="market" class="form-select">
+        {% for m in markets %}
+          <option value="{{ m }}" {% if m == selected_market %}selected{% endif %}>
+            {{ m }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Odd</label>
+      <input name="odd" type="number" step="0.01" class="form-control" value="{{ odd|default:'' }}">
+    </div>
+
+    <button class="btn btn-primary w-100">Analisar</button>
+  </form>
+
+  {% if analysis %}
+  <div class="card mt-4 text-center
+      {% if analysis.decision == 'APOSTAR' %}border-success{% else %}border-danger{% endif %}">
+      <div class="card-body">
+        <h4>{{ analysis.decision }}</h4>
+        <p>Chance modelo: <strong>{{ analysis.model_prob }}%</strong></p>
+        <p>Chance casa: <strong>{{ analysis.book_prob }}%</strong></p>
+        <p>Diferença: <strong>{{ analysis.difference }}%</strong></p>
+        <span class="badge
+          {% if analysis.confidence == 'FORTE' %}bg-success
+          {% elif analysis.confidence == 'MÉDIO' %}bg-warning
+          {% elif analysis.confidence == 'FRACO' %}bg-secondary
+          {% else %}bg-dark{% endif %}">
+          {{ analysis.confidence }}
+        </span>
+      </div>
+  </div>
+  {% endif %}
+
+  {% if best_markets %}
+    <div class="card mt-4 border-success">
+      <div class="card-body">
+        <h5>🏆 Melhor aposta do jogo</h5>
+        <p><strong>{{ best_markets.0.market }}</strong></p>
+        <p>Odd: {{ best_markets.0.odd }}</p>
+        <p>Edge: +{{ best_markets.0.edge }}%</p>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="alert alert-warning mt-3 text-center">{{ error }}</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -7,6 +7,115 @@ from django.utils.timezone import now
 from jogos.models import League, Match, MatchStats, Season, Team
 
 
+def save_sofascore_data_nba(
+    event,
+    stats,
+    insights,
+    streaks,
+    standings,
+    previsao,
+    raw_event_json,
+    raw_statistics_json,
+):
+    # -------------------------
+    # LEAGUE
+    # -------------------------
+    league_name = event["tournament"]["name"]
+    league_country = event["tournament"]["category"]["name"]
+
+    league_obj, _ = League.objects.get_or_create(
+        name=league_name,
+        defaults={"country": league_country},
+    )
+
+    # -------------------------
+    # SEASON
+    # -------------------------
+    season_name = event["season"]["name"]
+
+    season_obj, _ = Season.objects.get_or_create(
+        name=season_name,
+        league=league_obj,
+    )
+
+    # -------------------------
+    # TEAMS
+    # -------------------------
+    home_team, _ = Team.objects.get_or_create(
+        name=event["homeTeam"]["name"],
+        defaults={"league": league_obj},
+    )
+
+    away_team, _ = Team.objects.get_or_create(
+        name=event["awayTeam"]["name"],
+        defaults={"league": league_obj},
+    )
+
+    # -------------------------
+    # MATCH
+    # -------------------------
+    score_home = event.get("homeScore", {}).get("current")
+    score_away = event.get("awayScore", {}).get("current")
+
+    ts = event.get("startTimestamp")
+    date_obj = datetime.fromtimestamp(ts) if ts else None
+
+    match_obj, _ = Match.objects.update_or_create(
+        external_id=event["id"],
+        defaults={
+            "sport": "basketball",
+            "season": season_obj,
+            "home_team": home_team,
+            "away_team": away_team,
+            "date": date_obj,
+            "home_team_score": score_home,
+            "away_team_score": score_away,
+            "raw_event_json": raw_event_json,
+            "raw_statistics_json": raw_statistics_json,
+            "finalizado": event["status"]["type"] == "finished",
+            "previsao_automatica": previsao,
+            "streaks_json": streaks,
+            "stading_json": standings,
+            "stats_json": stats,
+            "insights": insights,
+        },
+    )
+
+    # -------------------------
+    # SUMMARY (texto humano)
+    # -------------------------
+    summary = (
+        f"{home_team.name} {score_home} x {score_away} {away_team.name}\n\n"
+        "🏀 INSIGHTS NBA\n"
+        + "\n".join(f"- {i}" for i in insights)
+        + "\n\n📊 PREVISÃO AUTOMÁTICA\n"
+        + json.dumps(previsao, indent=2, ensure_ascii=False)
+    )
+
+    match_obj.analysis = summary
+    match_obj.save()
+
+    # -------------------------
+    # MATCHSTATS (NBA)
+    # -------------------------
+    stats_block = stats or {}
+
+    with transaction.atomic():
+        MatchStats.objects.update_or_create(
+            match=match_obj,
+            defaults=dict(
+                team_home=home_team,
+                team_away=away_team,
+                score_home=score_home,
+                score_away=score_away,
+                summary=summary,
+                analyzed_at=now(),
+            ),
+        )
+
+    return match_obj.id
+
+
 def save_sofascore_data(
     event,
     stats,

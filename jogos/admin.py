@@ -1,7 +1,12 @@
 import math
+import re
 
 from django.contrib import admin, messages
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
+from bet.teams.analytics import match_preview, team_profile
+from bet.teams.bet_preview import bet_recommendations
 from bet.utils import evaluate_match_models
 from jogos.models import League, Match, MatchStats, RunningToday, Season, Team
 
@@ -25,7 +30,8 @@ def telegram_send(text: str):
     payload = {
         "chat_id": "8426590050",
         "text": text,
-        "parse_mode": "Markdown",
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
     }
 
     try:
@@ -812,6 +818,7 @@ class MatchAdmin(admin.ModelAdmin):
         "gerar_analise_v3_2_action",
         "set_nao_finalizado",
         "action_evaluate",
+        "check_analise",
     ]
 
     list_filter = (
@@ -895,6 +902,230 @@ class MatchAdmin(admin.ModelAdmin):
     formfield_overrides = {
         models.JSONField: {"widget": Textarea(attrs={"rows": 4, "cols": 80})},
     }
+
+    def match_real_stats(self, match):
+        data = match.raw_statistics_json
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except Exception:
+                return {}
+
+        if not isinstance(data, dict):
+            return {}
+
+        stats = {
+            "home": {},
+            "away": {},
+        }
+
+        for block in data.get("statistics", []):
+            if block.get("period") != "ALL":
+                continue
+
+            for group in block.get("groups", []):
+                for item in group.get("statisticsItems", []):
+                    key = item.get("key")
+
+                    stats["home"][key] = item.get("homeValue", 0)
+                    stats["away"][key] = item.get("awayValue", 0)
+
+        return stats
+
+    def get_first_goal_side(self, match):
+        try:
+            """
+            Retorna: "home", "away" ou None (se 0x0 ou sem eventos)
+            Ajuste os nomes dos campos conforme seu JSON.
+            """
+            events = getattr(match, "event_json", None) or getattr(
+                match, "raw_events_json", None
+            )
+            if isinstance(events, str):
+                try:
+                    events = json.loads(events)
+                except Exception:
+                    return None
+
+            if not events:
+                return None
+
+            goals = []
+            for e in events:
+                # exemplos comuns: type/name/key
+                t = (e.get("type") or e.get("eventType") or e.get("name") or "").lower()
+
+                is_goal = (
+                    "goal" in t
+                    or e.get("key") in {"goal", "penaltyGoal", "ownGoal"}
+                    or e.get("type") in {"GOAL", "PENALTY_GOAL", "OWN_GOAL"}
+                )
+                if not is_goal:
+                    continue
+
+                # minuto / ordem (quanto mais robusto melhor)
+                minute = e.get("minute")
+                if minute is None:
+                    minute = (
+                        e.get("time", {}).get("minute")
+                        if isinstance(e.get("time"), dict)
+                        else None
+                    )
+                minute = int(minute) if str(minute).isdigit() else 9999
+
+                # lado/time do evento
+                side = (e.get("side") or e.get("teamSide") or "").lower()
+                if side not in {"home", "away"}:
+                    # às vezes vem teamId
+                    team_id = e.get("teamId") or e.get("team", {}).get("id")
+                    if team_id == match.home_team_id:
+                        side = "home"
+                    elif team_id == match.away_team_id:
+                        side = "away"
+                    else:
+                        continue
+
+                goals.append((minute, side))
+
+            if not goals:
+                return None
+
+            goals.sort(key=lambda x: x[0])
+            return goals[0][1]
+        except:
+            return None
+
+    def extract_float(self, value, default=None):
+        if value is None:
+            return default
+        try:
+            # pega 7.5 de "Linha 7.5" ou "Over 10,5"
+            match = re.search(r"(\d+(?:[.,]\d+)?)", str(value))
+            if not match:
+                return default
+            return float(match.group(1).replace(",", "."))
+        except Exception:
+            return default
+
+    def evaluate_bets(self, bets, match, preview):
+        real = self.match_real_stats(match)
+
+        result = {}
+
+        # 🎯 Primeiro gol
+        if bets.get("first_goal"):
+            first = self.get_first_goal_side(match)  # "home"/"away"/None
+            if first is None:
+                result["first_goal"] = "push"  # 0x0 ou sem dados
+            else:
+                result["first_goal"] = "hit" if first == bets["first_goal"] else "miss"
+
+        # 🚩 Escanteios totais
+        total_corners = real["home"].get("cornerKicks", 0) + real["away"].get(
+            "cornerKicks", 0
+        )
+
+        line = self.extract_float(bets.get("corners_line"))
+
+        if line is None:
+            result["corners_total"] = "unknown"
+        else:
+            if total_corners > line:
+                result["corners_total"] = "over_hit"
+            elif total_corners < line:
+                result["corners_total"] = "under_hit"
+            else:
+                result["corners_total"] = "push"
+
+        # 🚩 Escanteios por lado
+        if bets.get("corners_side"):
+            side = bets["corners_side"]  # "home" ou "away"
+            home = real["home"].get("cornerKicks", 0)
+            away = real["away"].get("cornerKicks", 0)
+
+            winner = "home" if home > away else "away"
+            result["corners_side"] = "hit" if side == winner else "miss"
+
+        # 🟨 Cartões
+        total_cards = real["home"].get("yellowCards", 0) + real["away"].get(
+            "yellowCards", 0
+        )
+
+        cards_line = self.extract_float(bets.get("cards_market"))
+
+        if cards_line is None:
+            result["cards"] = "unknown"
+        else:
+            if total_cards > cards_line:
+                result["cards"] = "over_hit"
+            elif total_cards < cards_line:
+                result["cards"] = "under_hit"
+            else:
+                result["cards"] = "push"
+
+        return result
+
+    def build_telegram_message(self, match, bets, evaluation=None):
+        text = []
+        text.append("📊 <b>Análise Automática</b>")
+        text.append("")
+        text.append(f"🏟 <b>{match.home_team.name}</b> x <b>{match.away_team.name}</b>")
+        text.append("")
+
+        # 🎯 Sugestões
+        text.append("🎯 <b>Sugestões</b>")
+        text.append(f"• Primeiro gol: <b>{bets['first_goal']}</b>")
+        text.append(f"• Escanteios linha: <b>{bets['corners_line']}</b>")
+        text.append(f"• Cartões: <b>{bets['cards_market']}</b>")
+        text.append("")
+
+        # ✅ Resultado (se finalizado)
+        if evaluation:
+            text.append("📌 <b>Resultado</b>")
+            for market, result in evaluation.items():
+                emoji = "✅" if "hit" in result else "❌" if "miss" in result else "🟡"
+                text.append(f"{emoji} {market}: <b>{result.upper()}</b>")
+
+        return "\n".join(text)
+
+    def check_analise(self, request, queryset):
+
+        for match in queryset:
+            match = get_object_or_404(Match, id=match.pk)
+
+            RECENT_GAMES = 5
+
+            # últimos jogos do mandante EM CASA
+            home_matches = Match.objects.filter(
+                Q(home_team=match.home_team) | Q(away_team=match.home_team),
+                finalizado=True,
+                date__lt=match.date,
+            ).order_by("-date")[:RECENT_GAMES]
+
+            away_matches = Match.objects.filter(
+                Q(home_team=match.away_team) | Q(away_team=match.away_team),
+                finalizado=True,
+                date__lt=match.date,
+            ).order_by("-date")[:RECENT_GAMES]
+
+            home_profile = team_profile(match.home_team, home_matches)
+            away_profile = team_profile(match.away_team, away_matches)
+
+            preview = match_preview(home_profile, away_profile)
+            bets = bet_recommendations(home_profile, away_profile, preview)
+
+            if match.finalizado:
+                evaluation = self.evaluate_bets(bets, match, preview)
+            else:
+                evaluation = None
+
+            analise_text = self.build_telegram_message(
+                match=match,
+                bets=bets,
+                evaluation=evaluation if match.finalizado else None,
+            )
+
+            telegram_send(analise_text)
 
     def gerar_analise_e_enviar(self, request, queryset):
         enviados = 0
@@ -985,6 +1216,7 @@ class MatchAdmin(admin.ModelAdmin):
             level=messages.SUCCESS,
         )
 
+    check_analise.short_description = "Gerar análise V3 resultado"
     gerar_analise_v3_action.short_description = (
         "Gerar análise V3 + enviar para o Telegram"
     )

@@ -2,7 +2,13 @@ from django.urls import path
 
 from . import views
 from .views import MatchOddsAllView, MatchOddsFeaturedView
-from .views.api import model_comparison_view
+from .views.api import PreBetAnalysisView, model_comparison_view
+from .views.match_detail_analise import (
+    match_preview_view,
+    team_analysis_view,
+    team_list_view,
+)
+from .views.pre_bet_market_engine import PreBetMarketEngineView
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -31,4 +37,13 @@ urlpatterns = [
     path(
         "models/<int:match_id>/", model_comparison_view, name="model-comparison-match"
     ),
+    # path("analysis/pre-bet/", PreBetAnalysisView.as_view(), name="pre_bet_analysis"),
+    path(
+        "analysis/pre-bet/<int:match_id>/",
+        PreBetMarketEngineView.as_view(),
+        name="pre_bet_market_simple",
+    ),
+    path("teams/", team_list_view, name="team_list"),
+    path("team/<int:team_id>/", team_analysis_view, name="team_analysis"),
+    path("preview/<int:match_id>/", match_preview_view, name="match_preview"),
 ]

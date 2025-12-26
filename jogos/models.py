@@ -30,8 +30,15 @@ class Team(models.Model):
 
 
 class Match(models.Model):
+    SPORT_CHOICES = (
+        ("football", "Football"),
+        ("basketball", "Basketball"),
+    )
+
+    sport = models.CharField(max_length=20, choices=SPORT_CHOICES, default="football")
+
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="matches")
-    external_id = models.IntegerField(unique=True)  # eventId do SofaScore
+    external_id = models.IntegerField(unique=True)
     slug = models.CharField(max_length=255, null=True, blank=True)
 
     home_team = models.ForeignKey(
@@ -47,26 +54,30 @@ class Match(models.Model):
     home_team_score = models.IntegerField(null=True, blank=True)
     away_team_score = models.IntegerField(null=True, blank=True)
 
-    # Insights textuais + previsão
-    insights = models.JSONField(default=list, blank=True)
-    previsao_automatica = models.JSONField(default=dict, blank=True)
-    raw_event_json = models.JSONField(default=dict, blank=True)
-    raw_statistics_json = models.JSONField(default=dict, blank=True)
-
-    created_at = models.DateTimeField(default=timezone.now)
-    current_minute = models.IntegerField(default=0)
-    tournament_id = models.CharField(max_length=255)
-    season_ids = models.CharField(max_length=255)
-    home_id = models.CharField(max_length=255)
-    away_id = models.CharField(max_length=255)
-    event_json = models.JSONField(default=dict, blank=True)
-    stading_json = models.JSONField(default=dict, blank=True)
+    # ===== USADOS NO FUTEBOL (MANTER) =====
+    event_json = models.JSONField(default=dict, blank=True)  # legacy
+    stading_json = models.JSONField(default=dict, blank=True)  # legacy (typo)
     stats_json = models.JSONField(default=dict, blank=True)
     streaks_json = models.JSONField(default=dict, blank=True)
     analise = models.JSONField(default=dict, blank=True)
 
+    # ===== PADRÃO NOVO (NBA + futuro) =====
+    raw_event_json = models.JSONField(default=dict, blank=True)
+    raw_statistics_json = models.JSONField(default=dict, blank=True)
+    standings_json = models.JSONField(default=dict, blank=True)
+    insights = models.JSONField(default=list, blank=True)
+    previsao_automatica = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    current_minute = models.IntegerField(default=0)
+
+    tournament_id = models.CharField(max_length=255, blank=True, null=True)
+    season_ids = models.CharField(max_length=255, blank=True, null=True)
+    home_id = models.CharField(max_length=255, blank=True, null=True)
+    away_id = models.CharField(max_length=255, blank=True, null=True)
+
     def __str__(self):
-        return f"{self.home_team} vs {self.away_team}"
+        return f"[{self.sport}] {self.home_team} vs {self.away_team}"
 
 
 class RunningToday(models.Model):
@@ -173,30 +184,30 @@ class StandingEntry(models.Model):
 
 class LiveSnapshot(models.Model):
     match = models.ForeignKey(Match, on_delete=models.CASCADE)
-    minute = models.IntegerField()
+    minute = models.IntegerField(default=0)
 
     # ======== OFENSIVO PRINCIPAL ========
-    xg_home = models.FloatField()
-    xg_away = models.FloatField()
+    xg_home = models.FloatField(default=0)
+    xg_away = models.FloatField(default=0)
 
-    shots_on_home = models.IntegerField()
-    shots_on_away = models.IntegerField()
+    shots_on_home = models.IntegerField(default=0)
+    shots_on_away = models.IntegerField(default=0)
 
-    shots_total_home = models.IntegerField()
-    shots_total_away = models.IntegerField()
+    shots_total_home = models.IntegerField(default=0)
+    shots_total_away = models.IntegerField(default=0)
 
-    corners_home = models.IntegerField()
-    corners_away = models.IntegerField()
+    corners_home = models.IntegerField(default=0)
+    corners_away = models.IntegerField(default=0)
 
-    possession_home = models.FloatField()
-    possession_away = models.FloatField()
+    possession_home = models.FloatField(default=0)
+    possession_away = models.FloatField(default=0)
 
     # ======== PROFUNDIDADE OFENSIVA ========
-    touches_box_home = models.IntegerField()
-    touches_box_away = models.IntegerField()
+    touches_box_home = models.IntegerField(default=0)
+    touches_box_away = models.IntegerField(default=0)
 
-    final_third_entries_home = models.IntegerField()
-    final_third_entries_away = models.IntegerField()
+    final_third_entries_home = models.IntegerField(default=0)
+    final_third_entries_away = models.IntegerField(default=0)
 
     big_chances_home = models.IntegerField(default=0)
     big_chances_away = models.IntegerField(default=0)
@@ -244,6 +255,55 @@ class LiveSnapshot(models.Model):
     momentum_score = models.FloatField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    ft_made_home = models.IntegerField(default=0)
+    ft_made_away = models.IntegerField(default=0)
+
+    fg2_made_home = models.IntegerField(default=0)
+    fg2_made_away = models.IntegerField(default=0)
+
+    fg3_made_home = models.IntegerField(default=0)
+    fg3_made_away = models.IntegerField(default=0)
+
+    fg_made_home = models.IntegerField(default=0)
+    fg_made_away = models.IntegerField(default=0)
+
+    rebounds_home = models.IntegerField(default=0)
+    rebounds_away = models.IntegerField(default=0)
+
+    off_reb_home = models.IntegerField(default=0)
+    off_reb_away = models.IntegerField(default=0)
+
+    def_reb_home = models.IntegerField(default=0)
+    def_reb_away = models.IntegerField(default=0)
+
+    assists_home = models.IntegerField(default=0)
+    assists_away = models.IntegerField(default=0)
+
+    turnovers_home = models.IntegerField(default=0)
+    turnovers_away = models.IntegerField(default=0)
+
+    steals_home = models.IntegerField(default=0)
+    steals_away = models.IntegerField(default=0)
+
+    blocks_home = models.IntegerField(default=0)
+    blocks_away = models.IntegerField(default=0)
+
+    fouls_home = models.IntegerField(default=0)
+    fouls_away = models.IntegerField(default=0)
+
+    max_run_home = models.IntegerField(default=0)
+    max_run_away = models.IntegerField(default=0)
+
+    biggest_lead_home = models.IntegerField(default=0)
+    biggest_lead_away = models.IntegerField(default=0)
+
+    # tempo em segundos
+    time_leading_home = models.IntegerField(default=0)
+    time_leading_away = models.IntegerField(default=0)
+
+    points_home = models.IntegerField(default=0)
+    points_away = models.IntegerField(default=0)
 
     class Meta:
         ordering = ["minute"]

@@ -7,7 +7,7 @@ import requests
 from django.core.management.base import BaseCommand
 
 from bet.models import PossibleBet
-from jogos.utils import save_sofascore_data
+from jogos.utils import save_sofascore_data, save_sofascore_data_nba
 
 BASE = "https://www.sofascore.com/api/v1"
 headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -78,266 +78,124 @@ class Command(BaseCommand):
                 return 50
             return min(int(ratio * 100), 100)
 
-        def generate_auto_prediction(event, stats, streaks, standings):
-            """
-            Gera previsão automática usando:
-            - streaks (tendências históricas)
-            - standings (tabela)
-            - stats (xG, finalizações, posse)
-            - momento do jogo (minuto)
-            """
-
+        def generate_auto_prediction_nba(event, stats, streaks):
             home = event["homeTeam"]["name"]
             away = event["awayTeam"]["name"]
 
             # -----------------------------
-            # BASES
+            # MÉTRICAS BÁSICAS
             # -----------------------------
-            home_st = standings.get("home") or {}
-            away_st = standings.get("away") or {}
+            def get_stat(key):
+                for g in stats.get("groups", []):
+                    for it in g.get("statisticsItems", []):
+                        if it.get("key") == key:
+                            return float(it.get("homeValue", 0)), float(
+                                it.get("awayValue", 0)
+                            )
+                return 0.0, 0.0
 
-            streaks_gen = streaks.get("general", []) or []
-            streaks_h2h = streaks.get("head2head", []) or []
+            pts_h, pts_a = get_stat("points")
+            pace_h, pace_a = get_stat("pace")
+            off_h, off_a = get_stat("offensiveRating")
+            def_h, def_a = get_stat("defensiveRating")
 
-            stats_block = stats or {}
-            xg_h = float(stats_block.get("xg", {}).get("home", 0.0))
-            xg_a = float(stats_block.get("xg", {}).get("away", 0.0))
-
-            shots_h = float(stats_block.get("shots", {}).get("home", 0.0))
-            shots_a = float(stats_block.get("shots", {}).get("away", 0.0))
-
-            sot_h = float(stats_block.get("shots_on", {}).get("home", 0.0))
-            sot_a = float(stats_block.get("shots_on", {}).get("away", 0.0))
-
-            poss_h = float(stats_block.get("posse", {}).get("home", 0.0))
-            poss_a = float(stats_block.get("posse", {}).get("away", 0.0))
-
-            total_xg = xg_h + xg_a
-            total_shots = shots_h + shots_a
-            total_sot = sot_h + sot_a
+            avg_points = pts_h + pts_a
+            avg_pace = (pace_h + pace_a) / 2
 
             # -----------------------------
-            # MINUTO / FASE DO JOGO
+            # TENDÊNCIAS (streaks)
             # -----------------------------
-            start_ts = event.get("startTimestamp")
-            current_ts = event.get("time", {}).get("timestamp")
+            home_hot = any(
+                s["team"] == "home" and s["hot"] for s in streaks.get("general", [])
+            )
+            away_hot = any(
+                s["team"] == "away" and s["hot"] for s in streaks.get("general", [])
+            )
 
-            minute = None
-            if start_ts and current_ts:
-                # segundo → minuto
-                elapsed = max(0, current_ts - start_ts)
-                minute = int(elapsed // 60)
+            # -----------------------------
+            # OVER / UNDER
+            # -----------------------------
+            over_score = 50
+            if avg_points >= 220:
+                over_score = 80
+            elif avg_points >= 214:
+                over_score = 70
+            elif avg_points <= 205:
+                over_score = 35
 
-            if minute is None:
-                phase = "pre"
-            elif minute <= 30:
-                phase = "early"
-            elif minute <= 70:
-                phase = "mid"
+            # pace influencia muito
+            if avg_pace >= 102:
+                over_score += 10
+            elif avg_pace <= 96:
+                over_score -= 10
+
+            over_score = max(5, min(95, over_score))
+            under_score = 100 - over_score
+
+            # -----------------------------
+            # FAVORITO / SPREAD
+            # -----------------------------
+            home_power = off_h - def_h + (3 if home_hot else 0)
+            away_power = off_a - def_a + (3 if away_hot else 0)
+
+            diff = home_power - away_power
+
+            if diff >= 6:
+                favorito = home
+                spread = -5.5
+                prob_home = 75
+            elif diff >= 3:
+                favorito = home
+                spread = -3.5
+                prob_home = 65
+            elif diff <= -6:
+                favorito = away
+                spread = +5.5
+                prob_home = 25
             else:
-                phase = "late"
+                favorito = "Equilibrado"
+                spread = 0
+                prob_home = 50
+
+            prob_away = 100 - prob_home
 
             # -----------------------------
-            # LISTAS DE SINAIS
+            # MERCADOS SUGERIDOS
             # -----------------------------
-            under_signals = []
-            over_signals = []
-            home_signals = []
-            away_signals = []
+            mercados = []
 
-            def is_goal_streak(name: str) -> bool:
-                name = name.lower()
-                return ("goal" in name) or ("gols" in name) or ("goals" in name)
+            if over_score >= 65:
+                mercados.append("Over 214.5")
+            elif under_score >= 65:
+                mercados.append("Under 214.5")
 
-            # -----------------------------
-            # STREAKS (HISTÓRICO)
-            # -----------------------------
-            for item in streaks_gen + streaks_h2h:
-                ratio = item.get("ratio")
-                if ratio is None:
-                    continue
-
-                name = (item.get("name") or "").lower()
-                team = item.get("team")
-
-                # Over/Under apenas quando claramente relacionado a GOLS
-                if is_goal_streak(name):
-                    if "more than" in name or "mais de" in name:
-                        over_signals.append(prob_from_ratio(ratio))
-                    if "less than" in name or "menos de" in name:
-                        under_signals.append(prob_from_ratio(ratio))
-
-                # Resultado (vitórias/derrotas/etc) pesa pro favorito
-                if team == "home" and ratio >= 0.60:
-                    home_signals.append(prob_from_ratio(ratio))
-                if team == "away" and ratio >= 0.60:
-                    away_signals.append(prob_from_ratio(ratio))
-
-            # -----------------------------
-            # STANDINGS (TABELA)
-            # -----------------------------
-            pts_home = home_st.get("points", 0) or 0
-            pts_away = away_st.get("points", 0) or 0
-            diff_pts = pts_home - pts_away
-
-            if diff_pts > 2:
-                home_signals.append(65)
-            elif diff_pts < -2:
-                away_signals.append(65)
-
-            # -----------------------------
-            # STATS AO VIVO → GOLS
-            # -----------------------------
-            # xG total
-            if total_xg >= 2.0:
-                over_signals.append(80)
-            elif total_xg >= 1.2:
-                over_signals.append(70)
-            elif total_xg >= 0.8:
-                over_signals.append(60)
-            elif total_xg <= 0.4 and phase in ("mid", "late"):
-                under_signals.append(70)
-
-            # volume de finalizações
-            if total_shots >= 18:
-                over_signals.append(70)
-            elif total_shots >= 10:
-                over_signals.append(60)
-            elif total_shots <= 4 and phase in ("mid", "late"):
-                under_signals.append(65)
-
-            # chutes no alvo
-            if total_sot >= 7:
-                over_signals.append(75)
-            elif total_sot >= 4:
-                over_signals.append(65)
-            elif total_sot <= 1 and phase in ("mid", "late"):
-                under_signals.append(65)
-
-            # fase do jogo: fim de jogo 0x0 puxa mais pro under
-            hs = event.get("homeScore", {}) or {}
-            as_ = event.get("awayScore", {}) or {}
-            score_h = hs.get("current", 0) or 0
-            score_a = as_.get("current", 0) or 0
-            total_goals = (score_h or 0) + (score_a or 0)
-
-            if phase == "late" and total_goals == 0 and total_xg < 1.0:
-                under_signals.append(80)
-
-            # -----------------------------
-            # STATS AO VIVO → FAVORITO
-            # -----------------------------
-            # xG dominando
-            if xg_h > xg_a * 1.5 and xg_h > 0.4:
-                home_signals.append(70)
-            elif xg_a > xg_h * 1.5 and xg_a > 0.4:
-                away_signals.append(70)
-
-            # chutes no alvo
-            if sot_h >= 3 and sot_h >= sot_a + 2:
-                home_signals.append(60)
-            if sot_a >= 3 and sot_a >= sot_h + 2:
-                away_signals.append(60)
-
-            # posse pode contribuir levemente
-            if poss_h >= 60:
-                home_signals.append(55)
-            elif poss_a >= 60:
-                away_signals.append(55)
-
-            # -----------------------------
-            # PROBABILIDADES FINAIS
-            # -----------------------------
-            def avg_or_50(values):
-                return int(sum(values) / len(values)) if values else 50
-
-            prob_over = avg_or_50(over_signals)
-            prob_under = avg_or_50(under_signals)
-            prob_home = avg_or_50(home_signals)
-            prob_away = avg_or_50(away_signals)
-
-            # clamp leve
-            prob_over = max(5, min(95, prob_over))
-            prob_under = max(5, min(95, prob_under))
-            prob_home = max(5, min(95, prob_home))
-            prob_away = max(5, min(95, prob_away))
-
-            # -----------------------------
-            # LEITURA DE GOLS
-            # -----------------------------
-            diff_gols = prob_over - prob_under
-
-            if diff_gols >= 15:
-                leitura_gols = "Jogo com forte tendência de muitos gols."
-                mercado_gols = "Over 2.5"
-            elif diff_gols >= 8:
-                leitura_gols = "Tendência moderada para muitos gols."
-                mercado_gols = "Over 1.5"
-            elif diff_gols <= -15:
-                leitura_gols = "Jogo com forte tendência de poucos gols."
-                mercado_gols = "Under 2.5"
-            elif diff_gols <= -8:
-                leitura_gols = "Tendência moderada de poucos gols."
-                mercado_gols = "Under 3.5"
-            else:
-                leitura_gols = "Cenário equilibrado — sem leitura clara para gols."
-                mercado_gols = "Nenhum mercado claro"
-
-            # -----------------------------
-            # FAVORITO (tabela + modelo)
-            # -----------------------------
-            diff_prob = prob_home - prob_away
-
-            score_home = diff_prob * 0.7 + diff_pts * 0.3
-
-            if score_home >= 12:
-                leitura_fav = f"{home} aparece como favorito pelo momento."
-            elif score_home <= -12:
-                leitura_fav = f"{away} aparece como favorito pelo momento."
-            else:
-                leitura_fav = "Partida equilibrada — sem favorito claro."
-
-            # -----------------------------
-            # MERCADO SEGURO
-            # -----------------------------
-            if mercado_gols.startswith("Under"):
-                mercado_seguro = "Under 3.5" if "2.5" in mercado_gols else mercado_gols
-
-            elif mercado_gols.startswith("Over"):
-                mercado_seguro = "Over 1.5" if "2.5" in mercado_gols else mercado_gols
-
-            else:
-                # 2) Sem leitura clara → usa score_home (bem mais confiável)
-                if abs(score_home) < 10:
-                    mercado_seguro = "Nenhum mercado seguro"
-                else:
-                    mercado_seguro = (
-                        "Dupla chance mandante"
-                        if score_home > 0
-                        else "Dupla chance visitante"
-                    )
+            if favorito == home:
+                mercados.append("Vitória mandante")
+                mercados.append("Spread -5.5")
+            elif favorito == away:
+                mercados.append("Vitória visitante")
+                mercados.append("Spread +5.5")
 
             return {
                 "probabilidades": {
-                    "under": prob_under,
-                    "over": prob_over,
+                    "over": over_score,
+                    "under": under_score,
                     "home": prob_home,
                     "away": prob_away,
                 },
                 "leitura_geral": {
-                    "gols": leitura_gols,
-                    "favorito": leitura_fav,
+                    "total_pontos": (
+                        "Tendência de jogo rápido e pontuado"
+                        if over_score > under_score
+                        else "Jogo mais cadenciado"
+                    ),
+                    "favorito": favorito,
                 },
-                "mercados_sugeridos_modelo": {
-                    "principal": mercado_seguro,
-                    "gols": mercado_gols,
-                },
+                "mercados_sugeridos_modelo": mercados,
                 "extra_contexto": {
-                    "minute": minute,
-                    "phase": phase,
-                    "xg_home": xg_h,
-                    "xg_away": xg_a,
-                    "total_xg": total_xg,
+                    "avg_points": avg_points,
+                    "pace": avg_pace,
+                    "spread_estimado": spread,
                 },
             }
 
@@ -359,53 +217,67 @@ class Command(BaseCommand):
         # =====================================================
         #  INSIGHTS BÁSICOS DO JOGO
         # =====================================================
-        def generate_insights(event, stats):
+        def generate_insights_basketball(event, stats):
             home = event["homeTeam"]["name"]
             away = event["awayTeam"]["name"]
 
-            hs = event.get("homeScore", {})
-            as_ = event.get("awayScore", {})
+            hs = event.get("homeScore", {}) or {}
+            as_ = event.get("awayScore", {}) or {}
 
-            ht_home = hs.get("period1", 0)
-            ht_away = as_.get("period1", 0)
-            ft_home = hs.get("current", 0)
-            ft_away = as_.get("current", 0)
+            # placar atual
+            score_home = hs.get("current", 0) or 0
+            score_away = as_.get("current", 0) or 0
+            total_points = score_home + score_away
 
-            # estatísticas
-            xg_home, xg_away = extract_stat(stats, "expectedGoals")
-            shots_home, shots_away = extract_stat(stats, "totalShots")
-            shots_on_home, shots_on_away = extract_stat(stats, "shotsOnGoal")
-            possession_home, possession_away = extract_stat(stats, "ballPossession")
+            # pontuação por períodos (quarters)
+            q1_home = hs.get("period1", 0) or 0
+            q1_away = as_.get("period1", 0) or 0
+            q2_home = hs.get("period2", 0) or 0
+            q2_away = as_.get("period2", 0) or 0
 
             insights = []
 
-            # domínio xG
-            if xg_home > xg_away * 1.4:
-                insights.append(f"{home} dominou claramente o jogo.")
-            elif xg_away > xg_home * 1.4:
-                insights.append(f"{away} dominou claramente o jogo.")
+            # -----------------------------
+            # DOMÍNIO
+            # -----------------------------
+            if score_home > score_away + 10:
+                insights.append(f"{home} domina a partida com boa vantagem.")
+            elif score_away > score_home + 10:
+                insights.append(f"{away} domina a partida com boa vantagem.")
             else:
-                insights.append("Jogo equilibrado no geral.")
+                insights.append("Partida equilibrada até o momento.")
 
-            # ritmo
-            if (ft_home + ft_away) > (ht_home + ht_away):
-                insights.append("O jogo acelerou no 2º tempo.")
+            # -----------------------------
+            # RITMO
+            # -----------------------------
+            first_half = q1_home + q1_away + q2_home + q2_away
+
+            if first_half >= 110:
+                insights.append("Jogo muito rápido e ofensivo.")
+            elif first_half <= 90:
+                insights.append("Jogo mais truncado e cadenciado.")
             else:
-                insights.append("O ritmo caiu no 2º tempo.")
+                insights.append("Ritmo moderado de jogo.")
+
+            # -----------------------------
+            # LEITURA DE PONTOS
+            # -----------------------------
+            if total_points >= 220:
+                insights.append("Partida com tendência forte de Over em pontos.")
+            elif total_points <= 205:
+                insights.append("Partida com tendência de Under em pontos.")
 
             return {
                 "eventId": event["id"],
-                "slug": event["slug"],
+                "slug": event.get("slug"),
                 "tournament": event.get("tournament", {}).get("name"),
                 "homeTeam": home,
                 "awayTeam": away,
-                "placar": f"{ft_home}-{ft_away}",
-                "ht": f"{ht_home}-{ht_away}",
+                "placar": f"{score_home}-{score_away}",
                 "stats": {
-                    "xg": {"home": xg_home, "away": xg_away},
-                    "shots": {"home": shots_home, "away": shots_away},
-                    "shots_on": {"home": shots_on_home, "away": shots_on_away},
-                    "posse": {"home": possession_home, "away": possession_away},
+                    "points": {"home": score_home, "away": score_away},
+                    "first_half": first_half,
+                    "total": total_points,
                 },
                 "insights": insights,
             }
@@ -737,51 +609,18 @@ class Command(BaseCommand):
 
         date = get_month_dates(YEAR, MONTH, start_day=1)
         #
-        date = ["2025-12-23"]
+        date = ["2025-12-25"]
 
         for c in date:
-            url = f"{BASE}/sport/football/scheduled-events/{c}"
+            url = f"{BASE}/sport/basketball/scheduled-events/{c}"
             data = get_json(url)
 
-            # human_sleep(15, 30)
-
-            allowed_leagues = {"coppa-italia"}
-            allowed_countries = {"italy"}
-
             allowed_leagues = {
-                "premier-league",
-                "laliga",
-                "serie-a",
-                "conmebol-libertadores",
-                "brasileirao-serie-a",
-                "ligue-1",
-                "bundesliga",
-                "trendyol-super-lig",
-                "coppa-italia",
-                "copa-del-rey",
-                "uefa-champions-league",
-                "copa-do-brasil",
-                "uefa-europa-league",
-                "uefa-conference-league",
-                "efl-cup",
+                "nba",
             }
 
             allowed_countries = {
-                "england",
-                "spain",
-                "italy",
-                "south-america",
-                "brazil",
-                "france",
-                "germany",
-                "turkey",
-                "italy",
-                "spain",
-                "europe",
-                "brazil",
-                "europe",
-                "europe",
-                "england",
+                "usa",
             }
             try:
                 events = [
@@ -818,7 +657,7 @@ class Command(BaseCommand):
                     home_standing = get_team_standing(standings, home_id)
                     away_standing = get_team_standing(standings, away_id)
 
-                    result = generate_insights(event, stats)
+                    result = generate_insights_basketball(event, stats)
                     result["insights"].extend(generate_deep_insights(stats))
 
                     # streaks
@@ -833,8 +672,8 @@ class Command(BaseCommand):
                         "away": away_standing,
                         "favorito_tabela": table_favorite(home_standing, away_standing),
                     }
-                    prediction = generate_auto_prediction(
-                        event, stats, streaks_analysis, result["standings"]
+                    prediction = generate_auto_prediction_nba(
+                        event, stats, streaks_analysis
                     )
 
                     result["previsao_automatica"] = prediction
@@ -842,33 +681,22 @@ class Command(BaseCommand):
                     # limpa apostas antigas do evento
                     PossibleBet.objects.filter(event_id=event["id"]).delete()
 
-                    # MERCADOS sugeridos
-                    markets = prediction.get("mercados_sugeridos_modelo", {})
-
-                    # PROBABILIDADES do modelo
+                    markets = prediction.get("mercados_sugeridos_modelo", [])
                     probs = prediction.get("probabilidades", {})
 
-                    # 1) Mercado principal
-                    if markets.get("principal"):
-                        PossibleBet.objects.create(
-                            event_id=event["id"],
-                            market=markets["principal"],
-                            probability=max(probs.values()),  # melhor probabilidade
-                            description="Mercado principal sugerido pelo modelo",
-                        )
+                    best_prob = max(probs.values()) if probs else 50
 
-                    # 2) Mercado de gols
-                    if markets.get("gols"):
+                    for market in markets:
                         PossibleBet.objects.create(
                             event_id=event["id"],
-                            market=markets["gols"],
-                            probability=probs.get("over") or 50,
-                            description="Leitura de gols com base no comportamento do jogo",
+                            market=market,
+                            probability=best_prob,
+                            description="Mercado sugerido pelo modelo NBA",
                         )
 
                     final.append(result)
 
-                    save_sofascore_data(
+                    save_sofascore_data_nba(
                         event,
                         result["stats"],  # stats
                         result["insights"],
@@ -879,5 +707,5 @@ class Command(BaseCommand):
                         json.dumps(stats, ensure_ascii=False),
                     )
             except Exception as e:
-                print(f"erro: {e}")
+                print(f"erro: {e} {e.__traceback__.tb_lineno}")
                 pass

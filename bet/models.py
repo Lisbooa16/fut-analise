@@ -262,3 +262,21 @@ class MatchModelEvaluation(models.Model):
 
     def __str__(self):
         return f"{self.match_id} | {self.model_version} | {self.market} | {self.result}"
+
+
+class PreBetDecision(models.Model):
+    match = models.ForeignKey("jogos.Match", on_delete=models.CASCADE)
+    market = models.CharField(max_length=100)
+
+    prob_home = models.FloatField(null=True, blank=True)
+    prob_away = models.FloatField(null=True, blank=True)
+    prob_h2h = models.FloatField(null=True, blank=True)
+    prob_final = models.FloatField()
+
+    odd = models.FloatField()
+    book_prob = models.FloatField()
+
+    decision = models.BooleanField()  # True = apostar
+    result = models.BooleanField(null=True)  # True = GREEN, False = RED
+
+    created_at = models.DateTimeField(auto_now_add=True)

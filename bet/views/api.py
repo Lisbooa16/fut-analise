@@ -1,12 +1,14 @@
 import calendar
 import random
 import time
+from decimal import Decimal
 
 import requests
 from curl_cffi import requests as cureq
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.views import View
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -548,3 +550,107 @@ def model_comparison_view(request, match_id=None):
     context["summary"] = summary
 
     return render(request, "betting/model_comparison.html", context)
+
+
+class PreBetAnalysisView(View):
+    template_name = "betting/pre_bet_analysis.html"
+
+    def parse_ratio(self, value):
+        if "/" not in value:
+            return None
+        try:
+            x, y = value.split("/")
+            return int(x) / int(y)
+        except Exception:
+            return None
+
+    def calculate_market_prob(self, match_data, market_name):
+        general_probs = []
+        h2h_probs = []
+
+        for item in match_data.get("general", []):
+            if item["name"].lower() == market_name.lower():
+                p = self.parse_ratio(item["value"])
+                if p:
+                    general_probs.append(p)
+
+        for item in match_data.get("head2head", []):
+            if item["name"].lower() == market_name.lower():
+                p = self.parse_ratio(item["value"])
+                if p:
+                    h2h_probs.append(p)
+
+        # pesos: 70% general / 30% h2h
+        if general_probs and h2h_probs:
+            return (sum(general_probs) / len(general_probs)) * 0.7 + (
+                sum(h2h_probs) / len(h2h_probs)
+            ) * 0.3
+
+        if general_probs:
+            return sum(general_probs) / len(general_probs)
+
+        if h2h_probs:
+            return sum(h2h_probs) / len(h2h_probs)
+
+        return None
+
+    MARKETS = [
+        "More than 2.5 goals",
+        "Both teams scoring",
+        "Less than 10.5 corners",
+        "More than 10.5 corners",
+        "Less than 4.5 cards",
+        "First to score",
+    ]
+
+    def get(self, request, match_id):
+        match = get_object_or_404(Match, pk=match_id)
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "match": match,
+                "markets": self.MARKETS,
+            },
+        )
+
+    def post(self, request, match_id):
+        match = get_object_or_404(Match, pk=match_id)
+
+        market = request.POST.get("market")
+        odd = Decimal(request.POST.get("odd"))
+
+        # aqui você já tem o JSON da partida
+        match_data = match.streaks_json or {}
+
+        prob = self.calculate_market_prob(match_data, market)
+
+        book_prob = Decimal(1) / odd if odd else None
+
+        should_bet = prob and book_prob and prob > float(book_prob)
+
+        context = {
+            "match": match,
+            "markets": self.MARKETS,
+            "selected_market": market,
+            "odd": float(odd),
+            "analysis": (
+                {
+                    "model_prob_pct": round(prob * 100, 1) if prob else None,
+                    "book_prob_pct": (
+                        round(float(book_prob) * 100, 1) if book_prob else None
+                    ),
+                    "difference_pct": (
+                        round((prob - float(book_prob)) * 100, 1) if prob else None
+                    ),
+                    "decision": "APOSTAR" if should_bet else "NÃO APOSTAR",
+                    "is_good": should_bet,
+                }
+                if prob
+                else None
+            ),
+            "error": None if prob else "Não há dados suficientes para esse mercado.",
+        }
+
+        return render(request, self.template_name, context)

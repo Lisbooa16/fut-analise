@@ -11,6 +11,8 @@ from django.utils import timezone
 from django.utils.timezone import now
 
 from bet.models import PossibleBet
+from bet.teams.analytics import match_preview, team_profile
+from bet.teams.bet_preview import bet_recommendations
 from bet.utils import MatchAnalyzer
 from get_events import SofaScore
 from jogos.models import League, LiveSnapshot, Match, MatchStats
@@ -366,6 +368,47 @@ def _pregame_score(pregame_form):
     }
 
 
+def parse_points_or_record(value):
+    """
+    Aceita:
+    - 38
+    - "38"
+    - "19-9"  (NBA record)
+    Retorna float normalizado.
+    """
+    if value is None:
+        return 0.0
+
+    # já é número
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    # string
+    if isinstance(value, str):
+        value = value.strip()
+
+        # formato NBA: "W-L"
+        if "-" in value:
+            try:
+                wins, losses = value.split("-", 1)
+                wins = float(wins)
+                losses = float(losses)
+                total = wins + losses
+                if total > 0:
+                    return wins / total * 100  # win %
+                return 0.0
+            except Exception:
+                return 0.0
+
+        # string numérica
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+
+    return 0.0
+
+
 def _pregame_edge(pregame_form):
     """Retorna leitura simples de favoritismo baseada em posição/forma."""
     if not pregame_form:
@@ -376,8 +419,8 @@ def _pregame_edge(pregame_form):
 
     home_pos = home.get("position")
     away_pos = away.get("position")
-    home_pts = float(home.get("points") or 0)
-    away_pts = float(away.get("points") or 0)
+    home_pts = parse_points_or_record(home.get("points"))
+    away_pts = parse_points_or_record(away.get("points"))
 
     edge = "Equilibrado"
     reason = "Sem vantagem clara."
@@ -441,6 +484,30 @@ def match_detail(request, pk):
             + " ".join(pregame_score["reasons"])
         )
 
+    match = get_object_or_404(Match, id=pk)
+
+    RECENT_GAMES = 5
+
+    # últimos jogos do mandante EM CASA
+    home_matches = Match.objects.filter(
+        Q(home_team=match.home_team) | Q(away_team=match.home_team),
+        finalizado=True,
+        date__lt=match.date,
+    ).order_by("-date")[:RECENT_GAMES]
+
+    away_matches = Match.objects.filter(
+        Q(home_team=match.away_team) | Q(away_team=match.away_team),
+        finalizado=True,
+        date__lt=match.date,
+    ).order_by("-date")[:RECENT_GAMES]
+
+    home_profile = team_profile(match.home_team, home_matches)
+    away_profile = team_profile(match.away_team, away_matches)
+
+    preview = match_preview(home_profile, away_profile)
+
+    bets = bet_recommendations(home_profile, away_profile, preview)
+
     context = {
         "match": match,
         "stats": stats,
@@ -448,6 +515,7 @@ def match_detail(request, pk):
         "analysis": base_analysis,
         "streak_analysis": streak_analysis,
         "live_analysis": live_analysis,
+        "preview": preview,
         "possible_bets": PossibleBet.objects.filter(event_id=match.external_id),
         "stat_labels": STAT_LABELS,
         "current_home": match.home_team_score or 0,
@@ -455,6 +523,7 @@ def match_detail(request, pk):
         "pregame_form": pregame_form,
         "pregame_edge": pregame_edge,
         "pregame_score": pregame_score,
+        "bet_suggestions": bets,
     }
 
     return render(request, "betting/match_detail.html", context)
@@ -470,6 +539,17 @@ def post_status(request):
             if match.date and match.date > timezone.now():
                 return JsonResponse(
                     {"error": "Match already started/finished"}, status=400
+                )
+
+            if match.sport == "basketball":
+                data = SofaScore().player_stats(match)
+                return JsonResponse(
+                    {
+                        "sport": "basketball",
+                        "event_id": match.external_id,
+                        "players": data,
+                    },
+                    safe=False,
                 )
 
             snapshot = SofaScore().get_stats(event_id)

@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+{% block title %}{{ match.home_team }} vs {{ match.away_team }}{% endblock %}
+{% load currency_filters %}
+
+{% block content %}
+
+<style>
+    :root {
+        --bg-card: #1e1e2d;
+        --bg-card-hover: #262639;
+        --border-color: rgba(255, 255, 255, 0.08);
+        --primary-glow: rgba(54, 153, 255, 0.15);
+        --text-main: #ffffff;
+        --text-muted: #92929f;
+
+        /* Cores de Status */
+        --win-bg: rgba(80, 205, 137, 0.2);
+        --win-color: #50cd89;
+        --draw-bg: rgba(255, 199, 0, 0.2);
+        --draw-color: #ffc700;
+        --loss-bg: rgba(241, 65, 108, 0.2);
+        --loss-color: #f1416c;
+    }
+
+    /* Cards Gerais */
+    .dashboard-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        overflow: hidden;
+    }
+
+    .dashboard-card-header {
+        background: rgba(0, 0, 0, 0.15);
+        border-bottom: 1px solid var(--border-color);
+        padding: 1rem 1.25rem;
+    }
+
+    /* Card da IA (Destaque) */
+    .ai-card {
+        background: linear-gradient(160deg, #1e1e2d 0%, #131318 100%);
+        border: 1px solid rgba(54, 153, 255, 0.3);
+        box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .stat-widget {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        transition: all 0.2s;
+    }
+    .stat-widget:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Badges de Forma (W-D-L) */
+    .form-badge-item {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 0.75rem;
+        border: 1px solid transparent;
+    }
+
+    .form-w { background: var(--win-bg); color: var(--win-color); border-color: rgba(80, 205, 137, 0.3); }
+    .form-d { background: var(--draw-bg); color: var(--draw-color); border-color: rgba(255, 199, 0, 0.3); }
+    .form-l { background: var(--loss-bg); color: var(--loss-color); border-color: rgba(241, 65, 108, 0.3); }
+
+    /* Lista de Tendências */
+    .trend-item {
+        border-left: 3px solid transparent;
+        transition: background 0.2s;
+    }
+    .trend-item:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    .trend-icon-wrapper {
+        width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border-radius: 50%;
+        margin-right: 12px;
+    }
+
+    /* Utilitários de Texto */
+    .text-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; }
+    .text-value { font-size: 1.25rem; font-weight: 700; color: #fff; }
+</style>
+
+<div class="row">
+    <div class="col-lg-5">
+
+        {% if preview %}
+        <div class="card dashboard-card ai-card mb-4">
+            <div class="dashboard-card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-white fw-bold d-flex align-items-center">
+                    <i class="bi bi-cpu-fill text-primary me-2"></i>
+                    <span style="background: linear-gradient(90deg, #fff, #a1aab6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Análise do Modelo</span>
+                </h6>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 shadow-sm px-3 rounded-pill">IA v2.0</span>
+            </div>
+
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between p-3 rounded mb-3" style="background: rgba(54, 153, 255, 0.05); border: 1px dashed rgba(54, 153, 255, 0.3);">
+                    <div>
+                        <span class="d-block text-primary fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">⚽ Gols Esperados (xG)</span>
+                        <small class="text-muted" style="font-size: 0.7rem;">Projeção de qualidade ofensiva</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="display-6 fw-bolder text-white" style="text-shadow: 0 0 10px rgba(54,153,255,0.3);">{{ preview.expected_goals|default:"-" }}</span>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-4">
+                        <div class="stat-widget h-100">
+                            <small class="text-label d-block mb-1">Over 2.5</small>
+                            <span class="text-value text-success">{{ preview.over_2_5|default:"0" }}%</span>
+                            <div class="progress mt-2" style="height: 3px; background: rgba(255,255,255,0.1);">
+                                <div class="progress-bar bg-success" style="width: {{ preview.over_2_5|default:'0' }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-4">
+                        <div class="stat-widget h-100">
+                            <small class="text-label d-block mb-1">BTTS</small>
+                            <span class="text-value text-warning">{{ preview.btts|default:"0" }}%</span>
+                            <div class="progress mt-2" style="height: 3px; background: rgba(255,255,255,0.1);">
+                                <div class="progress-bar bg-warning" style="width: {{ preview.btts|default:'0' }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-4">
+                        <div class="stat-widget h-100">
+                            <small class="text-label d-block mb-1">Cantos +8.5</small>
+                            <span class="text-value">{{ preview.corners_over_8_5|default:"-" }}%</span>
+                            <div class="progress mt-2" style="height: 3px; background: rgba(255,255,255,0.1);">
+                                <div class="progress-bar bg-white" style="width: {{ preview.corners_over_8_5|default:'0' }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-3 border-top border-secondary border-opacity-10">
+                    <div class="d-flex gap-2">
+                        <div class="d-flex align-items-center px-2 py-1 rounded bg-dark border border-secondary border-opacity-25">
+                            <i class="bi bi-database text-muted me-2" style="font-size: 0.8rem;"></i>
+                            <span class="text-muted small" style="font-size: 0.75rem;">Amostra: <b>{{ sample_home|default:"0" }}</b> (H) / <b>{{ sample_away|default:"0" }}</b> (A)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div id="odds-card-container"></div>
+
+        {% if pregame_form.home or pregame_form.away %}
+        <div class="card dashboard-card mb-4">
+            <div class="dashboard-card-header">
+                <h6 class="mb-0 text-white fw-bold"><i class="bi bi-graph-up-arrow text-info me-2"></i>Forma & Classificação</h6>
+            </div>
+            <div class="card-body p-3">
+
+                {% if pregame_edge.edge %}
+                <div class="alert bg-secondary bg-opacity-10 border border-secondary border-opacity-25 text-white mb-3 d-flex align-items-start gap-3 p-3 rounded-3">
+                    <i class="bi bi-lightbulb-fill text-warning fs-5"></i>
+                    <div>
+                        <div class="fw-bold text-warning mb-1">Insight Pré-Jogo</div>
+                        <small class="text-gray-400 d-block lh-sm">{{ pregame_edge.reason }}</small>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="d-flex flex-column gap-3">
+                    {% if pregame_form.home %}
+                    <div class="p-2 rounded hover-effect">
+                        <div class="d-flex justify-content-between align-items-end mb-2">
+                            <div>
+                                <small class="text-label text-primary">Mandante</small>
+                                <div class="text-white fw-bold fs-6">{{ match.home_team }}</div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-dark border border-secondary border-opacity-25 text-muted">Pos: {{ pregame_form.home.position|default:"-" }}</span>
+                                <span class="badge bg-dark border border-secondary border-opacity-25 text-muted">Pts: {{ pregame_form.home.points|default:"-" }}</span>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1">
+                            {% for r in pregame_form.home.form %}
+                                <div class="form-badge-item {% if r == 'W' %}form-w{% elif r == 'L' %}form-l{% else %}form-d{% endif %}" title="{{ r }}">
+                                    {{ r }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if pregame_form.home and pregame_form.away %}<hr class="border-secondary border-opacity-10 my-0">{% endif %}
+
+                    {% if pregame_form.away %}
+                    <div class="p-2 rounded hover-effect">
+                        <div class="d-flex justify-content-between align-items-end mb-2">
+                            <div>
+                                <small class="text-label text-danger">Visitante</small>
+                                <div class="text-white fw-bold fs-6">{{ match.away_team }}</div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-dark border border-secondary border-opacity-25 text-muted">Pos: {{ pregame_form.away.position|default:"-" }}</span>
+                                <span class="badge bg-dark border border-secondary border-opacity-25 text-muted">Pts: {{ pregame_form.away.points|default:"-" }}</span>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1">
+                            {% for r in pregame_form.away.form %}
+                                <div class="form-badge-item {% if r == 'W' %}form-w{% elif r == 'L' %}form-l{% else %}form-d{% endif %}" title="{{ r }}">
+                                    {{ r }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if streak_analysis %}
+        <div class="card dashboard-card mb-4">
+            <div class="dashboard-card-header">
+                <h6 class="mb-0 text-white fw-bold"><i class="bi bi-fire text-warning me-2"></i>Tendências Quentes</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush rounded-bottom">
+
+                    {% for item in streak_analysis.general %}
+                        {% if item.hot_streak %}
+                        <div class="list-group-item bg-transparent text-white border-bottom border-secondary border-opacity-10 px-4 py-3 trend-item" style="border-left-color: #00bfa5;">
+                            <div class="d-flex align-items-start">
+                                <div class="trend-icon-wrapper">
+                                    <i class="bi bi-lightning-fill text-success"></i>
+                                </div>
+                                <div>
+                                    <span class="d-block fw-semibold font-size-sm">{{ item.text }}</span>
+                                    <small class="text-muted text-uppercase" style="font-size: 0.65rem; font-weight: 700;">Geral</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% for item in streak_analysis.head2head %}
+                        {% if item.hot_streak %}
+                        <div class="list-group-item bg-transparent text-white border-bottom border-secondary border-opacity-10 px-4 py-3 trend-item" style="border-left-color: #3699ff;">
+                            <div class="d-flex align-items-start">
+                                <div class="trend-icon-wrapper">
+                                    <i class="bi bi-arrow-left-right text-info"></i>
+                                </div>
+                                <div>
+                                    <span class="d-block fw-semibold font-size-sm">{{ item.text }}</span>
+                                    <small class="text-muted text-uppercase" style="font-size: 0.65rem; font-weight: 700;">Confronto Direto</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if not streak_analysis.general and not streak_analysis.head2head %}
+                        <div class="p-4 text-center text-muted small">
+                            <i class="bi bi-inbox fs-4 d-block mb-2 opacity-50"></i>
+                            Nenhuma tendência relevante encontrada.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}
