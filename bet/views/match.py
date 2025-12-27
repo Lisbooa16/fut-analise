@@ -486,7 +486,7 @@ def match_detail(request, pk):
 
     match = get_object_or_404(Match, id=pk)
 
-    RECENT_GAMES = 5
+    RECENT_GAMES = 3
 
     # últimos jogos do mandante EM CASA
     home_matches = Match.objects.filter(
