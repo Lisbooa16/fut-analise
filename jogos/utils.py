@@ -489,3 +489,94 @@ def analyze_match(data_event, data_stats):
         "confidence": confidence,
         "insights": insights,
     }
+
+
+import math
+
+def probability_over(projected, line, stdev):
+    if stdev <= 0:
+        return 0.0
+    z = (projected - line) / stdev
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+def should_enter_over(player, line, odds):
+    """
+    player: dict gerado pelo seu player_stats
+    line: linha do over (ex: 17.5)
+    odds: odd decimal (ex: 2.02)
+    """
+
+    projected = player["projected_points"]
+    minutes = player["expected_minutes"]
+    attempts = player["attempts_per_min"]
+    confidence = player["confidence"]
+    risk = player.get("risk_profile", {})
+
+    volatility = risk.get("volatility", "medium")
+    efficiency = risk.get("efficiency_flag", "normal")
+
+    # -----------------------
+    # 1️⃣ Filtros duros (NÃO entra)
+    # -----------------------
+    if minutes < 26:
+        return {"enter": False, "reason": "minutos insuficientes"}
+
+    if attempts < 0.5:
+        return {"enter": False, "reason": "baixo volume ofensivo"}
+
+    if volatility == "high" and confidence != "high":
+        return {"enter": False, "reason": "volatilidade alta"}
+
+    # -----------------------
+    # 2️⃣ Desvio padrão dinâmico
+    # -----------------------
+    base_stdev = 5.0
+
+    if volatility == "low":
+        base_stdev = 4.0
+    elif volatility == "high":
+        base_stdev = 6.0
+
+    if efficiency == "unsustainable":
+        base_stdev += 1.0
+
+    # -----------------------
+    # 3️⃣ Probabilidade
+    # -----------------------
+    prob = probability_over(projected, line, base_stdev)
+
+    # -----------------------
+    # 4️⃣ EV
+    # -----------------------
+    ev = prob * odds - 1
+
+    # -----------------------
+    # 5️⃣ Decisão final
+    # -----------------------
+    if ev < 0.05:
+        return {
+            "enter": False,
+            "probability": round(prob, 3),
+            "ev": round(ev, 3),
+            "reason": "EV insuficiente",
+        }
+
+    # -----------------------
+    # 6️⃣ Stake suggestion
+    # -----------------------
+    if ev >= 0.20:
+        stake = "strong"
+    elif ev >= 0.10:
+        stake = "medium"
+    else:
+        stake = "small"
+
+    return {
+        "enter": True,
+        "probability": round(prob, 3),
+        "ev": round(ev, 3),
+        "stake_suggestion": stake,
+        "reason": (
+            f"EV positivo | proj={projected} | vol={volatility} | conf={confidence}"
+        ),
+    }

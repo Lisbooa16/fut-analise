@@ -609,7 +609,7 @@ class Command(BaseCommand):
 
         date = get_month_dates(YEAR, MONTH, start_day=1)
         #
-        date = ["2025-12-25"]
+        date = ["2026-01-01"]
 
         for c in date:
             url = f"{BASE}/sport/basketball/scheduled-events/{c}"

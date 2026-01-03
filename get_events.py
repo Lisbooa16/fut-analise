@@ -1653,10 +1653,88 @@ class SofaScore:
 
         # se já jogou muito cedo, tende a manter rotação
         minutes_played = stats.get("secondsPlayed", 0) / 60
+        attempts_per_min = (
+           stats["twoPointAttempts"] +
+           stats["threePointAttempts"] +
+           0.44 * stats["freeThrowAttempts"]
+        ) / minutes_played
         if minutes_played > 18:
             base += 2
 
-        return min(base, 40)
+        if attempts_per_min >= 0.75:
+            base += 3
+        elif attempts_per_min >= 0.6:
+            base += 2
+        elif attempts_per_min < 0.35:
+            base -= 3
+
+        return min(max(base, minutes_played), 40)
+
+    def player_risk_profile(self, stats):
+        minutes = stats["secondsPlayed"] / 60
+        if minutes <= 0:
+            return {
+                "volatility": "unknown",
+                "efficiency_flag": "unknown",
+                "shot_profile": "unknown",
+                "risk_score": 99,
+            }
+
+        fga = stats["fieldGoalAttempts"]
+        fta = stats["freeThrowAttempts"]
+        three_att = stats["threePointAttempts"]
+
+        attempts_per_min = (fga + 0.44 * fta) / minutes
+
+        three_rate = three_att / fga if fga > 0 else 0
+        ft_rate = fta / fga if fga > 0 else 0
+
+        ts = stats.get("trueShootingPercentage", 0)
+        usage = stats.get("usage", 0)
+
+        risk_score = 0
+
+        if three_rate > 0.6:
+            risk_score += 2
+        if ft_rate < 0.25:
+            risk_score += 1
+        if ts > 70:
+            risk_score += 2
+        if attempts_per_min < 0.45:
+            risk_score += 2
+        if usage < 18:
+            risk_score += 1
+
+        if risk_score <= 2:
+            volatility = "low"
+        elif risk_score <= 4:
+            volatility = "medium"
+        else:
+            volatility = "high"
+
+        if three_rate > 0.6:
+            shot_profile = "three_point_heavy"
+        elif ft_rate > 0.35:
+            shot_profile = "ft_driven"
+        else:
+            shot_profile = "balanced"
+
+        if ts > 70:
+            efficiency_flag = "unsustainable"
+        elif ts < 45:
+            efficiency_flag = "poor"
+        else:
+            efficiency_flag = "normal"
+
+        return {
+            "attempts_per_min": round(attempts_per_min, 3),
+            "three_rate": round(three_rate, 2),
+            "ft_rate": round(ft_rate, 2),
+            "volatility": volatility,
+            "efficiency_flag": efficiency_flag,
+            "shot_profile": shot_profile,
+            "risk_score": risk_score,
+        }
 
     def player_stats(self, match):
         event_id = match.external_id
@@ -1691,12 +1769,7 @@ class SofaScore:
                 # 🔹 EXPECTED TOTAL MIN
                 # -----------------------
                 base_expected = self.expected_minutes(player, stats)
-
-                # nunca permitir expected muito acima do que já jogou
-                expected_total_minutes = min(
-                    base_expected, minutes + 14  # limite realista de minutos restantes
-                )
-
+                expected_total_minutes = min(base_expected, minutes + 14)
                 remaining_minutes = max(expected_total_minutes - minutes, 0)
 
                 # -----------------------
@@ -1707,38 +1780,52 @@ class SofaScore:
                 ppm_adj = w * ppm_raw + (1 - w) * prior_ppm
 
                 # -----------------------
-                # 🔹 ROLE PLAYER / ROTATION DETECTOR
+                # 🔹 ROLE PLAYER
                 # -----------------------
                 position = (player.get("position") or "").upper()
 
                 is_low_minutes = minutes < 15
                 is_low_volume = attempts_per_min < 0.5
-                is_big_rotation_gap = base_expected > minutes + 16
+                is_big_rotation_gap = base_expected > minutes + 14
                 is_rotation_position = (
-                    position in {"C", "CF", "F"} and attempts_per_min < 0.6
+                        position in {"C", "CF", "F"} and attempts_per_min < 0.6
                 )
 
                 is_role_player = (
-                    (is_low_minutes and is_low_volume)
-                    or is_big_rotation_gap
-                    or is_rotation_position
+                        (is_low_minutes and is_low_volume)
+                        or is_big_rotation_gap
+                        or is_rotation_position
                 )
+
+                # -----------------------
+                # 🔹 RISK PROFILE (NOVO)
+                # -----------------------
+                risk = self.player_risk_profile(stats)
 
                 # -----------------------
                 # 🔹 PROJEÇÃO FINAL
                 # -----------------------
                 projected_points = points + ppm_adj * remaining_minutes
 
-                max_extra = 8 if is_role_player else 18
+                if risk["volatility"] == "high":
+                    max_extra = 10
+                else:
+                    max_extra = 8 if is_role_player else 18
+
                 projected_points = min(projected_points, points + max_extra)
 
                 # -----------------------
                 # 🔹 CONFIDENCE
                 # -----------------------
-                if is_role_player:
-                    confidence = "low"
-                elif minutes >= 22 and attempts_per_min >= 0.6:
+                if (
+                        minutes >= 20
+                        and attempts_per_min >= 0.55
+                        and expected_total_minutes >= 30
+                        and risk["volatility"] != "high"
+                ):
                     confidence = "high"
+                elif is_role_player:
+                    confidence = "low"
                 else:
                     confidence = "medium"
 
@@ -1758,6 +1845,7 @@ class SofaScore:
                         "range_low": round(projected_points * 0.85, 1),
                         "range_high": round(projected_points * 1.15, 1),
                         "confidence": confidence,
+                        "risk_profile": risk,  # 👈 NOVO
                     }
                 )
 
